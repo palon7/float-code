@@ -1,0 +1,20 @@
+{
+  "package_id": "org.palon.floatcode",
+  "edition": "202601",
+  "name": "Float Code",
+  "version": "0.1.1",
+  "min_app_version": "2.0.0",
+  "min_sdk_version": "0.0.7",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Connect to Float Code server running on your machine, and recognize voice commands using the external API."
+    },
+    {
+      "name": "g2-microphone",
+      "desc": "Enables voice commands for hands-free control."
+    }
+  ],
+  "supported_languages": ["en"]
+}

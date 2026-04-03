@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run (no tag/release created)"
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+concurrency:
+  group: release-client-g2
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm -r run check
+
+      - name: Pack .ehpk
+        working-directory: client-g2
+        run: pnpm exec evenhub pack app.json dist -o dist/float-code.ehpk
+
+      - name: Read version & compute tag
+        id: meta
+        run: |
+          VERSION=$(node -e "import('./client-g2/app.json',{with:{type:'json'}}).then(m=>process.stdout.write(m.default.version))")
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid version: $VERSION"; exit 1; }
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure tag does not already exist
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag already exists: $TAG"
+            exit 1
+          fi
+
+      - name: Dry-run info
+        if: ${{ inputs.dry_run == 'true' }}
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          echo "DRY RUN: would create tag '${TAG}' and GitHub Release"
+          echo "DRY RUN: artifact at client-g2/dist/float-code.ehpk"
+          ls -lh client-g2/dist/float-code.ehpk
+
+      - name: Create GitHub Release
+        if: ${{ inputs.dry_run == 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes \
+            client-g2/dist/float-code.ehpk

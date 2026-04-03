@@ -1,0 +1,40 @@
+{
+  "name": "float-code-server",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:all": "vitest run",
+    "test:watch": "vitest --project unit",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check"
+  },
+  "dependencies": {
+    "@float-code/shared": "workspace:*",
+    "@hono/node-server": "^1.14.1",
+    "@hono/node-ws": "^1.1.1",
+    "@palon7/cc-client": "^0.1.0",
+    "hono": "^4.8.3",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.5.0",
+    "@types/ws": "^8.18.1",
+    "eslint": "^10.1.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.57.2",
+    "vitest": "^3.2.4"
+  }
+}

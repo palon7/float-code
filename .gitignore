@@ -1,0 +1,24 @@
+# production
+/build
+dist/
+
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# misc
+.playwright-mcp
+.DS_Store
+*.pem
+*.log
+*.local.json
+
+# envs
+.env*.local
+.env
+
+# typescript
+*.tsbuildinfo
+.vite/
+

@@ -1,0 +1,150 @@
+import { OsEventTypeList } from "@evenrealities/even_hub_sdk";
+import type { EvenHubEvent } from "@evenrealities/even_hub_sdk";
+import type { ServerMessage } from "@float-code/shared/protocol";
+import type { G2Context } from "../../runtime/g2-context";
+import type { G2State } from "../../runtime/g2-state";
+import { useAppStore } from "../../../app/app-store";
+import { useSessionStore } from "../../../client/session-store";
+import { getEventType } from "../../runtime/event-utils";
+import { MAX_CONTENT_BYTES, MAX_LOG_ROWS } from "../../../constants";
+import { stripAnsiEscapes, truncateForDisplay } from "../../text-utils";
+import { buildMainPage } from "./view";
+import { formatStatusText } from "./status-icon";
+import { createMenuState } from "../menu/state";
+import { createWorkspaceSelectState } from "../workspace-select/state";
+import { createErrorState } from "../error/state";
+import { createVoiceListeningState } from "../voice-listening/state";
+import { isSessionSyncMessage, hasActiveSession } from "../sync-helpers";
+
+const BLINK_INTERVAL_MS = 1000;
+
+export function createMainState(): G2State {
+  let transitioning = false;
+  let unsubSession: (() => void) | null = null;
+  let blinkTimer: ReturnType<typeof setInterval> | null = null;
+  let blinkPhase = false;
+  let lastStatus = "";
+  let lastRawLog = "";
+  let lastLog = "";
+
+  function updateStatus(ctx: G2Context): void {
+    const status = formatStatusText(
+      useSessionStore.getState().getStatusInfo(),
+      blinkPhase,
+    );
+    if (status !== lastStatus) {
+      lastStatus = status;
+      ctx.display.updateText("status", status);
+    }
+  }
+
+  function updateLog(ctx: G2Context): void {
+    const rawLog = useSessionStore.getState().getLogText();
+    if (rawLog === lastRawLog) return;
+    lastRawLog = rawLog;
+    const log = truncateForDisplay(
+      stripAnsiEscapes(rawLog),
+      MAX_CONTENT_BYTES,
+      MAX_LOG_ROWS,
+    );
+    if (log !== lastLog) {
+      lastLog = log;
+      ctx.display.updateText("log", log);
+    }
+  }
+
+  function updateDisplay(ctx: G2Context): void {
+    updateStatus(ctx);
+    // BLE 送信中は計算をスキップ。ドレイン完了時に onDrainIdle で再計算される
+    if (ctx.display.hasPendingUpdate("log")) return;
+    updateLog(ctx);
+  }
+
+  function handleWs(ctx: G2Context, reason: string): void {
+    transitioning = true;
+    ctx.transition(createErrorState(reason));
+  }
+
+  function handleCc(ctx: G2Context, msg: ServerMessage): void {
+    if (!isSessionSyncMessage(msg)) return;
+    if (hasActiveSession()) return;
+
+    transitioning = true;
+    if (msg.type === "session.error") {
+      ctx.transition(
+        createErrorState("message" in msg ? msg.message : "Error"),
+      );
+    } else {
+      ctx.transition(createWorkspaceSelectState());
+    }
+  }
+
+  function handleG2(ctx: G2Context, event: EvenHubEvent): void {
+    const eventType = getEventType(event);
+
+    if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+      if (!useAppStore.getState().apiKey) return;
+      transitioning = true;
+      ctx.transition(createVoiceListeningState());
+      return;
+    }
+
+    if (eventType === OsEventTypeList.CLICK_EVENT) {
+      transitioning = true;
+      ctx.transition(createMenuState());
+      return;
+    }
+
+    // テキストのみの画面では sysEvent がタップとして来る
+    if (event.sysEvent) {
+      transitioning = true;
+      ctx.transition(createMenuState());
+    }
+  }
+
+  return {
+    id: "main",
+
+    async enter(ctx: G2Context) {
+      const session = useSessionStore.getState();
+      await ctx.display.setPage(
+        buildMainPage(
+          formatStatusText(session.getStatusInfo(), false),
+          truncateForDisplay(
+            stripAnsiEscapes(session.getLogText()),
+            MAX_CONTENT_BYTES,
+            MAX_LOG_ROWS,
+          ),
+        ),
+      );
+
+      unsubSession = useSessionStore.subscribe(() => updateDisplay(ctx));
+      ctx.display.onDrainIdle = () => updateLog(ctx);
+
+      blinkPhase = false;
+      if (blinkTimer) clearInterval(blinkTimer);
+      blinkTimer = setInterval(() => {
+        blinkPhase = !blinkPhase;
+        updateStatus(ctx);
+      }, BLINK_INTERVAL_MS);
+    },
+
+    handle(ctx, event) {
+      if (transitioning) return;
+      if (event.kind === "ws" && event.status.state === "error")
+        handleWs(ctx, event.status.reason);
+      else if (event.kind === "cc") handleCc(ctx, event.message);
+      else if (event.kind === "g2") handleG2(ctx, event.event);
+    },
+
+    exit(ctx: G2Context) {
+      if (blinkTimer) {
+        clearInterval(blinkTimer);
+        blinkTimer = null;
+      }
+      unsubSession?.();
+      unsubSession = null;
+      ctx.display.onDrainIdle = null;
+    },
+  };
+}

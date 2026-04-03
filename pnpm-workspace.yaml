@@ -1,0 +1,7 @@
+packages:
+  - "client-cli"
+  - "client-g2"
+  - "server"
+  - "shared"
+allowBuilds:
+  esbuild: true
