@@ -92,7 +92,9 @@ export function createSessionSelectState(workspacePath: string): G2State {
         return;
       }
       opening = true;
-      void ctx.display.setPage(buildSessionLoadingPage("Opening session..."));
+      ctx.display
+        .setPage(buildSessionLoadingPage("Opening session..."))
+        .catch(() => {});
     } else if (index <= Math.min(sessions.length, MAX_SESSIONS)) {
       // Existing session — send open and wait for response
       const session = sessions[index - 1];
@@ -107,7 +109,9 @@ export function createSessionSelectState(workspacePath: string): G2State {
         return;
       }
       opening = true;
-      void ctx.display.setPage(buildSessionLoadingPage("Opening session..."));
+      ctx.display
+        .setPage(buildSessionLoadingPage("Opening session..."))
+        .catch(() => {});
     } else {
       // Back
       transitioning = true;
