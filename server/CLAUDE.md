@@ -79,13 +79,10 @@ gateway.handleMessage()
     v
 authenticator.handleAuth()
     |-- authToken invalid --> close(4403)
-    |-- publicKey not approved --> auth.error(KEY_NOT_APPROVED)
-    |                               |
-    |                  Client sends pairing { publicKey, authToken }
-    |                               |
-    |                  authenticator.handlePairing()
-    |                               --> pairing.pending { code }
-    |                               --> close(4410)
+    |-- publicKey not approved
+    |                  Auto-register key in pairing/pending store
+    |                  --> auth.error(KEY_NOT_APPROVED)
+    |                  --> close(4409, "key_not_approved")
     |
     +-- publicKey approved --> auth.challenge { challenge }
                                  |

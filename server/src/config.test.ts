@@ -129,7 +129,7 @@ describe("loadConfig", () => {
     });
   });
 
-  it("不正な port はデフォルト値にフ��ールバックする", async () => {
+  it("不正な port はデフォルト値にフォールバックする", async () => {
     await fs.writeFile(
       path.join(tmpDir, "config.json"),
       JSON.stringify({

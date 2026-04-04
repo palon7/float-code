@@ -20,11 +20,6 @@ type AuthState =
   | { phase: "awaiting_response"; challenge: AuthChallenge; publicKey: string }
   | { phase: "authenticated" };
 
-/**
- * auth { publicKey, authToken }
- *   → approved: auth.challenge → auth.response → auth.ok
- *   → not approved: auto-register pairing → pairing.pending → close
- */
 export class WsAuthenticator {
   private states = new Map<WSContext, AuthState>();
   private timers = new Map<WSContext, NodeJS.Timeout>();
@@ -128,9 +123,9 @@ export class WsAuthenticator {
       log.warn({ connId }, "Key revoked during authentication");
       this.sendErrorAndClose(
         ws,
-        "SIGNATURE_INVALID",
+        "KEY_NOT_APPROVED",
         "Key was revoked during authentication",
-        WsCloseCode.AUTH_FAILED,
+        WsCloseCode.KEY_NOT_APPROVED,
       );
       return false;
     }

@@ -5,7 +5,7 @@
 
 - On first launch, generates an Ed25519 keypair and stores it at `~/.config/float-code/client-cli/keypair.json` (0600 permissions)
 - Authenticates via challenge-response: sends `publicKey` + `authToken`, signs the server's challenge, receives `auth.ok`
-- If the key is not yet approved, automatically sends a `pairing` request and enters `pairing` state (displays the pairing code)
+- If the key is not yet approved, receives `KEY_NOT_APPROVED`, derives the pairing code locally, and enters `pairing` state (displays the pairing code)
 - Server token is read from `~/.config/float-code/server/config.json` (or `--token` flag)
 
 ## Commands

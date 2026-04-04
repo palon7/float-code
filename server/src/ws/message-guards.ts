@@ -15,7 +15,7 @@ export function isAuthMessage(
     typeof v.publicKey === "string" &&
     HEX_32_BYTES.test(v.publicKey) &&
     typeof v.authToken === "string" &&
-    HEX_32_BYTES.test(v.authToken)
+    v.authToken.length > 0
   );
 }
 
