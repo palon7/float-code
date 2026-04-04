@@ -2,10 +2,21 @@
   "name": "float-code-server",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
+  "bin": {
+    "float-code-server": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "build": "tsup",
+    "prepublishOnly": "pnpm -C ../shared build && pnpm run build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
@@ -18,7 +29,6 @@
     "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check"
   },
   "dependencies": {
-    "@float-code/shared": "workspace:*",
     "@hono/node-server": "^1.14.1",
     "@hono/node-ws": "^1.1.1",
     "@noble/ed25519": "^3.0.1",
@@ -28,12 +38,14 @@
     "ws": "^8.18.2"
   },
   "devDependencies": {
+    "@float-code/shared": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.5.0",
     "@types/ws": "^8.18.1",
     "eslint": "^10.1.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
+    "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.57.2",
