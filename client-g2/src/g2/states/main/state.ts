@@ -10,7 +10,6 @@ import { MAX_CONTENT_BYTES, MAX_LOG_ROWS } from "../../../constants";
 import {
   stripAnsiEscapes,
   truncateForDisplay,
-  truncateToBytes,
   byteLength,
 } from "../../text-utils";
 import { buildMainPage } from "./view";
@@ -73,12 +72,13 @@ export function createMainState(): G2State {
     if (historyMode) return;
     historyMode = true;
     const rawLog = stripAnsiEscapes(useSessionStore.getState().getLogText());
-    const text = truncateToBytes(rawLog, MAX_HISTORY_BYTES);
+    const text = truncateForDisplay(rawLog, MAX_HISTORY_BYTES, Infinity);
     ctx.display.onDebugLog?.(
       `enterHistory: ${byteLength(rawLog)}B -> ${byteLength(text)}B (${text.length} chars)`,
     );
-    ctx.display.updateText("status", " History | Double Tap to Exit");
+    // log を先に送ることで、既存の drain 待ちに割り込んで遅延を抑える
     ctx.display.updateText("log", text);
+    ctx.display.updateText("status", " History | Double Tap to Exit");
   }
 
   function exitHistory(ctx: G2Context): void {
