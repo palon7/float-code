@@ -11,15 +11,15 @@
 
 ## コンテナ共通プロパティ
 
-| プロパティ | 型 | 範囲 | 説明 |
-|---|---|---|---|
-| `containerID` | number | - | ページ内で一意 |
-| `containerName` | string | 最大16文字 | ページ内で一意 |
-| `xPosition` | number | 0〜576 | 左上からのX座標 |
-| `yPosition` | number | 0〜288 | 左上からのY座標 |
-| `width` | number | 0〜576 | コンテナの幅 |
-| `height` | number | 0〜288 | コンテナの高さ |
-| `isEventCapture` | number | 0 or 1 | ページあたり正確に1つ設定必須 |
+| プロパティ       | 型     | 範囲       | 説明                          |
+| ---------------- | ------ | ---------- | ----------------------------- |
+| `containerID`    | number | -          | ページ内で一意                |
+| `containerName`  | string | 最大16文字 | ページ内で一意                |
+| `xPosition`      | number | 0〜576     | 左上からのX座標               |
+| `yPosition`      | number | 0〜288     | 左上からのY座標               |
+| `width`          | number | 0〜576     | コンテナの幅                  |
+| `height`         | number | 0〜288     | コンテナの高さ                |
+| `isEventCapture` | number | 0 or 1     | ページあたり正確に1つ設定必須 |
 
 ## コンテナ種別
 
@@ -29,29 +29,28 @@
 
 **追加プロパティ**
 
-| プロパティ | 型 | 範囲 | 説明 |
-|---|---|---|---|
-| `borderWidth` | number | 0〜5 | ボーダー幅（0=なし） |
-| `borderColor` | number | 0〜16 | グレースケール濃度 |
+| プロパティ      | 型     | 範囲  | 説明                   |
+| --------------- | ------ | ----- | ---------------------- |
+| `borderWidth`   | number | 0〜5  | ボーダー幅（0=なし）   |
+| `borderColor`   | number | 0〜16 | グレースケール濃度     |
 | `paddingLength` | number | 0〜32 | 全方向の統一パディング |
 
 **制約**
+
 - テキスト内容の上限: 1,000〜2,000文字（操作により異なる）
 - テキスト配置: 左上揃えのみ（中央・右揃え不可）
 - フォントサイズ・フォント種別・装飾（太字・斜体・下線）は変更不可
 - `isEventCapture: 1` を設定するとスクロール対応
-- 実機では `borderRadius` を使わない（`rebuildPageContainer` / `createStartUpPageContainer` が無視される）
-- 実機では座標が重なる複数テキストコンテナは表示が更新されない → レイアウトを分割するか `textContainerUpgrade` で差し替える
 
 **`textContainerUpgrade` での差分更新**
 
-| プロパティ | 説明 |
-|---|---|
-| `containerID` | 対象コンテナID |
+| プロパティ      | 説明           |
+| --------------- | -------------- |
+| `containerID`   | 対象コンテナID |
 | `containerName` | 対象コンテナ名 |
-| `contentOffset` | 更新開始位置 |
-| `contentLength` | 更新文字数 |
-| `content` | 更新内容 |
+| `contentOffset` | 更新開始位置   |
+| `contentLength` | 更新文字数     |
+| `content`       | 更新内容       |
 
 ### List Container（リストコンテナ）
 
@@ -59,26 +58,27 @@
 
 **追加プロパティ**
 
-| プロパティ | 型 | 範囲 | 説明 |
-|---|---|---|---|
-| `itemCount` | number | 1〜20 | アイテム数（`itemName`の長さと一致必須） |
-| `itemName` | string[] | 最大64文字/項目 | 各アイテムのラベル |
-| `itemWidth` | number | - | アイテム幅（0=自動計算） |
-| `isItemSelectBorderEn` | boolean | - | 選択ハイライト表示のON/OFF |
-| `borderWidth` | number | 0〜5 | ボーダー幅 |
-| `borderColor` | number | 0〜15 | グレースケール濃度 |
-| `paddingLength` | number | 0〜32 | 全方向の統一パディング |
+| プロパティ             | 型       | 範囲            | 説明                                     |
+| ---------------------- | -------- | --------------- | ---------------------------------------- |
+| `itemCount`            | number   | 1〜20           | アイテム数（`itemName`の長さと一致必須） |
+| `itemName`             | string[] | 最大64文字/項目 | 各アイテムのラベル                       |
+| `itemWidth`            | number   | -               | アイテム幅（0=自動計算）                 |
+| `isItemSelectBorderEn` | boolean  | -               | 選択ハイライト表示のON/OFF               |
+| `borderWidth`          | number   | 0〜5            | ボーダー幅                               |
+| `borderColor`          | number   | 0〜15           | グレースケール濃度                       |
+| `paddingLength`        | number   | 0〜32           | 全方向の統一パディング                   |
 
 **イベント (`listEvent`)**
 
-| フィールド | 説明 |
-|---|---|
+| フィールド               | 説明                                                                    |
+| ------------------------ | ----------------------------------------------------------------------- |
 | `currentSelectItemIndex` | 選択中インデックス（index 0 は `undefined` になるので `?? 0` で受ける） |
-| `currentSelectItemName` | 選択中アイテム名 |
-| `SCROLL_TOP_EVENT` | リスト上端到達 |
-| `SCROLL_BOTTOM_EVENT` | リスト下端到達（ページング実装のトリガーに使える） |
+| `currentSelectItemName`  | 選択中アイテム名                                                        |
+| `SCROLL_TOP_EVENT`       | リスト上端到達                                                          |
+| `SCROLL_BOTTOM_EVENT`    | リスト下端到達（ページング実装のトリガーに使える）                      |
 
 **制約**
+
 - アイテムの高さは `containerHeight / itemCount` で自動計算（カスタム不可）
 - アイテムの変更は `rebuildPageContainer` での全体再構築が必須
 
@@ -88,9 +88,9 @@
 
 **寸法制限**
 
-| 項目 | 範囲 |
-|---|---|
-| 幅 | 20〜200px |
+| 項目 | 範囲      |
+| ---- | --------- |
+| 幅   | 20〜200px |
 | 高さ | 20〜100px |
 
 **対応データ形式**
@@ -101,6 +101,7 @@
 - `ArrayBuffer`
 
 **制約・注意**
+
 - `createStartUpPageContainer` 時は画像データを送れない → 空のプレースホルダーで作成後、`updateImageRawData` で送信する2段階プロセスが必須
 - 画像データがコンテナサイズより小さい場合、ファームウェアが自動タイリング（繰り返し表示）する
 - イベントを取得できない → イベントが必要な場合、背後にテキストコンテナを置いてそちらで取得する
@@ -108,15 +109,15 @@
 
 ## スタイルに関する制約一覧
 
-| 機能 | 状態 |
-|---|---|
-| 背景色の指定 | 不可 |
-| フォントサイズ変更 | 不可（固定） |
-| フォント選択 | 不可（LVGL内蔵1種類のみ） |
-| テキスト装飾（太字・斜体・下線） | 不可 |
-| テキスト配置 | 左上揃えのみ |
-| Z-index コントロール | 不可（宣言順序で前後が決まる） |
-| `borderRadius` | 実機では使用禁止 |
+| 機能                             | 状態                           |
+| -------------------------------- | ------------------------------ |
+| 背景色の指定                     | 不可                           |
+| フォントサイズ変更               | 不可（固定）                   |
+| フォント選択                     | 不可（LVGL内蔵1種類のみ）      |
+| テキスト装飾（太字・斜体・下線） | 不可                           |
+| テキスト配置                     | 左上揃えのみ                   |
+| Z-index コントロール             | 不可（宣言順序で前後が決まる） |
+| `borderRadius`                   | 実機では使用禁止               |
 
 ## 対応文字
 

@@ -72,7 +72,7 @@ connecting ──(auth.ok + activeSession)──> main
      +──(error)──> error              |
                      |                |
                      +───(retry)──> connecting
-                                      
+
 main ──(tap)──> menu ──> workspace-select / session-select / main
   |
   +──(swipe up)──> voice-listening ──> voice-confirm ──> main
@@ -129,7 +129,6 @@ main ──(tap)──> menu ──> workspace-select / session-select / main
 - **ListContainer index 0 issue:** `listEvent.currentSelectItemIndex` returns `undefined` when the first item (index 0) is selected. Always use `?? 0` to set a default value. Items at index 1, 2, ... behave normally.
 - **No overlapping TextContainers (physical device):** On physical devices, placing multiple TextContainers with overlapping coordinates in `rebuildPageContainer` results in no display update (works in the simulator). This is likely a bug in Even Hub SDK 0.0.9. For overlay display, avoid overlapping TextContainers — split the layout or use `textContainerUpgrade` to replace content instead.
 - **`rebuildPageContainer` return value:** Always returns `false` on physical devices. Note that it also returns `false` when content exceeds the byte limit, but without updating the display.
-- **`borderRadius` is prohibited (physical device):** SDK 0.0.8+ sends `borderRadius`, but older EvenHub apps only understand the old field name `borderRdaius` (a protobuf typo). Any `rebuildPageContainer` / `createStartUpPageContainer` that includes `borderRadius` is silently ignored on physical devices. Do not use `borderRadius` until the EvenHub app is updated.
 - **Browser-side UI must follow EvenReality's design system:** Refer to `/docs/er-design-guideline.md` and always design according to the guidelines. Actively use even-toolkit components.
 
 ---
