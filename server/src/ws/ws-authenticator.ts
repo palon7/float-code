@@ -122,6 +122,19 @@ export class WsAuthenticator {
       return false;
     }
 
+    // Re-check approval in case the key was revoked after challenge was issued
+    const stillApproved = await isApproved(state.publicKey);
+    if (!stillApproved) {
+      log.warn({ connId }, "Key revoked during authentication");
+      this.sendErrorAndClose(
+        ws,
+        "SIGNATURE_INVALID",
+        "Key was revoked during authentication",
+        WsCloseCode.AUTH_FAILED,
+      );
+      return false;
+    }
+
     this.clearAuthTimeout(ws);
     this.states.set(ws, { phase: "authenticated" });
     log.info({ connId }, "WebSocket authenticated via challenge-response");

@@ -97,20 +97,19 @@ export function approvePairing(code: string): Promise<ApprovedKey | null> {
   });
 }
 
-export async function listPending(): Promise<PendingPairing[]> {
-  const raw = await loadRaw();
-  const data = filterExpired(raw);
-  // Only write back if expired entries were actually removed
-  if (data.pairings.length < raw.pairings.length) {
-    await save(data);
-  }
-  return data.pairings;
+export function listPending(): Promise<PendingPairing[]> {
+  return withLock(async () => {
+    const raw = await loadRaw();
+    const data = filterExpired(raw);
+    if (data.pairings.length < raw.pairings.length) await save(data);
+    return data.pairings;
+  });
 }
 
-export async function cleanupExpired(): Promise<void> {
-  const raw = await loadRaw();
-  const data = filterExpired(raw);
-  if (data.pairings.length < raw.pairings.length) {
-    await save(data);
-  }
+export function cleanupExpired(): Promise<void> {
+  return withLock(async () => {
+    const raw = await loadRaw();
+    const data = filterExpired(raw);
+    if (data.pairings.length < raw.pairings.length) await save(data);
+  });
 }
