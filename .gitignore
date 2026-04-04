@@ -8,6 +8,7 @@ node_modules/
 .pnp.js
 
 # misc
+.claude/worktrees
 .playwright-mcp
 .DS_Store
 *.pem

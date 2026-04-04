@@ -16,4 +16,5 @@ export interface G2Context {
   }) => Promise<VoiceInputSession>;
   stopVoiceSession: (reason?: "manual_confirm" | "completed") => Promise<void>;
   getVoiceSession: () => VoiceInputSession | null;
+  requestConnect: () => void;
 }

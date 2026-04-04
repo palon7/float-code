@@ -14,6 +14,7 @@ import type { LogLine } from "../../client/session-format";
 import type { G2Context } from "./g2-context";
 import type { G2State, RuntimeEvent } from "./g2-state";
 import { createErrorState } from "../states/error/state";
+import { ConnectionLifecycle } from "./connection-lifecycle";
 
 function buildSttContext(messages: string[]): string {
   if (messages.length === 0) return "";
@@ -27,7 +28,6 @@ function buildSttContext(messages: string[]): string {
 export interface G2RuntimeOptions {
   bridge: EvenAppBridge;
   displayManager: G2DisplayManager;
-  initialState: G2State;
   startupPage: G2PageDef;
   voiceInput: VoiceInputService;
   wsClient: WsClient;
@@ -39,12 +39,12 @@ export class G2Runtime {
   private bridge: EvenAppBridge;
   private display: G2DisplayManager;
   private currentState: G2State | null = null;
-  private initialState: G2State;
   private startupPage: G2PageDef;
   private voiceInput: VoiceInputService;
   private voiceSession: VoiceInputSession | null = null;
   private ctx: G2Context;
   private transitionChain = Promise.resolve();
+  private lifecycle: ConnectionLifecycle;
   private unsubscribeEvent: (() => void) | null = null;
   private unsubscribeWs: (() => void) | null = null;
   private unsubscribeWsStatus: (() => void) | null = null;
@@ -53,7 +53,6 @@ export class G2Runtime {
   constructor(options: G2RuntimeOptions) {
     this.bridge = options.bridge;
     this.display = options.displayManager;
-    this.initialState = options.initialState;
     this.startupPage = options.startupPage;
     this.voiceInput = options.voiceInput;
     this.debugLog = options.onDebugLog ?? (() => {});
@@ -67,7 +66,19 @@ export class G2Runtime {
       startVoiceSession: (opts) => this.startVoiceSession(opts),
       stopVoiceSession: (reason) => this.stopVoiceSession(reason),
       getVoiceSession: () => this.voiceSession,
+      requestConnect: () => this.requestConnect(),
     };
+
+    this.lifecycle = new ConnectionLifecycle({
+      transition: (next) => this.transition(next),
+      getCurrentStateId: () => this.currentState?.id,
+      wsClient: options.wsClient,
+      httpClient: options.httpClient,
+    });
+  }
+
+  requestConnect(): void {
+    void this.lifecycle.requestConnect();
   }
 
   async start(): Promise<void> {
@@ -100,7 +111,7 @@ export class G2Runtime {
       this.dispatch({ kind: "ws", status });
     });
 
-    await this.doTransition(this.initialState);
+    await this.lifecycle.requestConnect();
   }
 
   private async startVoiceSession(options?: {
@@ -142,9 +153,11 @@ export class G2Runtime {
   }
 
   private dispatch(event: RuntimeEvent): void {
-    // Promise.resolve().then() で同期 throw も含めて catch できる
     Promise.resolve()
-      .then(() => this.currentState?.handle?.(this.ctx, event))
+      .then(() => {
+        if (this.lifecycle.intercept(event)) return;
+        return this.currentState?.handle?.(this.ctx, event);
+      })
       .catch((err) => {
         this.debugLog(
           `dispatch error (${event.kind}): ${err instanceof Error ? err.message : String(err)}`,
@@ -246,6 +259,7 @@ export class G2Runtime {
   }
 
   dispose(): void {
+    this.lifecycle.dispose();
     this.unsubscribeEvent?.();
     this.unsubscribeEvent = null;
     this.unsubscribeWs?.();

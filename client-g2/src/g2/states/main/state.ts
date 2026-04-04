@@ -60,11 +60,6 @@ export function createMainState(): G2State {
     updateLog(ctx);
   }
 
-  function handleWs(ctx: G2Context, reason: string): void {
-    transitioning = true;
-    ctx.transition(createErrorState(reason));
-  }
-
   function handleCc(ctx: G2Context, msg: ServerMessage): void {
     if (!isSessionSyncMessage(msg)) return;
     if (hasActiveSession()) return;
@@ -131,9 +126,7 @@ export function createMainState(): G2State {
 
     handle(ctx, event) {
       if (transitioning) return;
-      if (event.kind === "ws" && event.status.state === "error")
-        handleWs(ctx, event.status.reason);
-      else if (event.kind === "cc") handleCc(ctx, event.message);
+      if (event.kind === "cc") handleCc(ctx, event.message);
       else if (event.kind === "g2") handleG2(ctx, event.event);
     },
 
