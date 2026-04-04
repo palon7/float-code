@@ -2,10 +2,8 @@ import { Card } from "even-toolkit/web";
 import { useAppStore } from "../app/app-store";
 
 export function PairingBanner() {
-  const { wsStatus, wsClient } = useAppStore((s) => ({
-    wsStatus: s.wsStatus,
-    wsClient: s.wsClient,
-  }));
+  const wsStatus = useAppStore((s) => s.wsStatus);
+  const wsClient = useAppStore((s) => s.wsClient);
   if (wsStatus.state !== "pairing") return null;
 
   const handleRetry = () => {
