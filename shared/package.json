@@ -19,6 +19,10 @@
     "./crypto/ed25519-setup": {
       "types": "./src/crypto/ed25519-setup.ts",
       "default": "./dist/crypto/ed25519-setup.js"
+    },
+    "./crypto/pairing-code": {
+      "types": "./src/crypto/pairing-code.ts",
+      "default": "./dist/crypto/pairing-code.js"
     }
   },
   "scripts": {

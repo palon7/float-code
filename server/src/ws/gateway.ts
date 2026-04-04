@@ -4,7 +4,6 @@ import { WsAuthenticator } from "./ws-authenticator.js";
 import {
   isAuthMessage,
   isAuthResponseMessage,
-  isPairingMessage,
   getMessageType,
 } from "./message-guards.js";
 import type { ClientMessage } from "@float-code/shared/protocol";
@@ -15,7 +14,7 @@ const log = logger.child({ name: "gateway" });
 
 type AuthenticatedMessageType = Exclude<
   ClientMessage["type"],
-  "auth" | "auth.response" | "pairing"
+  "auth" | "auth.response"
 >;
 type AuthenticatedHandlers = {
   [K in AuthenticatedMessageType]: (
@@ -70,13 +69,6 @@ export class WsGateway {
 
       if (isAuthResponseMessage(data)) {
         void this.handleAuthResponse(ws, data).catch(() => this.safeClose(ws));
-        return;
-      }
-
-      if (isPairingMessage(data)) {
-        void this.authenticator
-          .handlePairing(ws, data.publicKey, data.authToken, connId)
-          .catch(() => this.safeClose(ws));
         return;
       }
 
@@ -169,7 +161,6 @@ export class WsGateway {
         break;
       case "auth":
       case "auth.response":
-      case "pairing":
         log.debug({ connId }, `${data.type} ignored in authenticated phase`);
         break;
     }

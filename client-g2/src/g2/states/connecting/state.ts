@@ -32,11 +32,6 @@ export function createConnectingState(): G2State {
     } else if (msg.type === "auth.error") {
       transitioning = true;
       ctx.transition(createErrorState(msg.message));
-    } else if (msg.type === "pairing.pending") {
-      transitioning = true;
-      ctx.transition(
-        createErrorState(`Pairing: ${msg.code}\nApprove on server to connect`),
-      );
     }
   }
 

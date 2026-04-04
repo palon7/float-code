@@ -26,18 +26,6 @@ export function isAuthResponseMessage(
   return typeof v.signature === "string" && HEX_64_BYTES.test(v.signature);
 }
 
-export function isPairingMessage(
-  v: unknown,
-): v is Extract<ClientMessage, { type: "pairing" }> {
-  if (!isObject(v) || v.type !== "pairing") return false;
-  return (
-    typeof v.publicKey === "string" &&
-    HEX_32_BYTES.test(v.publicKey) &&
-    typeof v.authToken === "string" &&
-    v.authToken.length > 0
-  );
-}
-
 export function getMessageType(v: unknown): string | null {
   if (!isObject(v) || typeof v.type !== "string") return null;
   return v.type;

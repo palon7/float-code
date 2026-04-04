@@ -1,4 +1,6 @@
 import type { ServerMessage, AuthChallenge } from "@float-code/shared/protocol";
+import { WsCloseCode } from "@float-code/shared/protocol";
+import { derivePairingCode } from "@float-code/shared/crypto/pairing-code";
 import { signChallenge, type Keypair } from "../auth/keypair.js";
 
 export type ConnectionStatus =
@@ -124,14 +126,8 @@ export class WsClient {
           this.setStatus({ state: "connected" });
         } else if (msg.type === "auth.error") {
           if (msg.code === "KEY_NOT_APPROVED") {
-            ws.send(
-              JSON.stringify({
-                type: "pairing",
-                publicKey: this.keypair.publicKey,
-                authToken: this.authToken,
-                timestamp: new Date().toISOString(),
-              }),
-            );
+            const code = derivePairingCode(this.keypair.publicKey);
+            this.setStatus({ state: "pairing", code });
             return;
           }
           this.setStatus({
@@ -139,9 +135,6 @@ export class WsClient {
             reason: msg.message ?? "auth failed",
           });
           ws.close();
-        } else if (msg.type === "pairing.pending") {
-          this.setStatus({ state: "pairing", code: msg.code });
-          return;
         }
 
         for (const listener of this.messageListeners) {
@@ -157,8 +150,15 @@ export class WsClient {
       this.ws = null;
 
       if (this.intentionalClose) return;
-
       if (this.status.state === "pairing") return;
+
+      if (event.code === WsCloseCode.KEY_NOT_APPROVED.code) {
+        this.setStatus({
+          state: "pairing",
+          code: derivePairingCode(this.keypair.publicKey),
+        });
+        return;
+      }
 
       if (this.status.state !== "error") {
         const reason = event.reason || `disconnected (code: ${event.code})`;

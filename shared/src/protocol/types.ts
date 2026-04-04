@@ -41,7 +41,6 @@ export type ServerMessageMap = {
   "auth.challenge": { challenge: AuthChallenge };
   "auth.ok": { activeSession?: SessionSnapshot };
   "auth.error": { code: AuthErrorCode; message: string };
-  "pairing.pending": { code: string };
   "session.opened": SessionSnapshot;
   "session.started": SessionStarted;
   "session.entry": { sessionId: string; entry: ParsedEntry };
@@ -67,7 +66,6 @@ export type ServerMessageMap = {
 export type ClientMessageMap = {
   auth: { publicKey: string; authToken: string };
   "auth.response": { signature: string };
-  pairing: { publicKey: string; authToken: string };
   "session.open":
     | { workspacePath: string; sessionId?: never }
     | { workspacePath: string; sessionId: string };
@@ -111,7 +109,6 @@ export const WsCloseCode = {
   AUTH_TIMEOUT: { code: 4401, reason: "auth_timeout" },
   AUTH_FAILED: { code: 4403, reason: "auth_failed" },
   KEY_NOT_APPROVED: { code: 4409, reason: "key_not_approved" },
-  PAIRING_PENDING: { code: 4410, reason: "pairing_pending" },
 } as const;
 
 // Shared types

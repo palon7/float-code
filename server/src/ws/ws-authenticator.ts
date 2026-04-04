@@ -21,14 +21,9 @@ type AuthState =
   | { phase: "authenticated" };
 
 /**
- * WebSocket 認証フローを管理する。
- *
- * フロー:
- * 1. auth { publicKey, authToken } → トークン検証 + キー承認チェック
- * 2. auth.challenge { challenge } → クライアントに署名を要求
- * 3. auth.response { signature } → 署名検証 → auth.ok
- *
- * キー未承認の場合は pairing メッセージでペアリングフローに遷移。
+ * auth { publicKey, authToken }
+ *   → approved: auth.challenge → auth.response → auth.ok
+ *   → not approved: auto-register pairing → pairing.pending → close
  */
 export class WsAuthenticator {
   private states = new Map<WSContext, AuthState>();
@@ -64,12 +59,26 @@ export class WsAuthenticator {
 
     const approved = await isApproved(publicKey);
     if (!approved) {
-      log.info({ connId }, "Public key not approved");
-      // Client can still send a pairing message before the auth timeout
-      this.sendError(
+      log.info({ connId }, "Public key not approved, registering pairing");
+      const result = await requestPairing(publicKey);
+      if (!result.ok) {
+        const code: AuthErrorCode =
+          result.reason === "collision"
+            ? "PAIRING_CODE_COLLISION"
+            : "TOO_MANY_PENDING";
+        const message =
+          result.reason === "collision"
+            ? "Pairing code collision — regenerate keypair"
+            : "Too many pending pairing requests";
+        this.sendErrorAndClose(ws, code, message, WsCloseCode.AUTH_FAILED);
+        return;
+      }
+      log.info({ connId, code: result.code }, "Pairing registered");
+      this.sendErrorAndClose(
         ws,
         "KEY_NOT_APPROVED",
-        "Public key is not in the approved list",
+        "Public key is not approved — pairing registered",
+        WsCloseCode.KEY_NOT_APPROVED,
       );
       return;
     }
@@ -117,51 +126,6 @@ export class WsAuthenticator {
     this.states.set(ws, { phase: "authenticated" });
     log.info({ connId }, "WebSocket authenticated via challenge-response");
     return true;
-  }
-
-  async handlePairing(
-    ws: WSContext,
-    publicKey: string,
-    authToken: string,
-    connId?: string,
-  ): Promise<void> {
-    if (!verifyToken(authToken)) {
-      log.warn({ connId }, "Pairing: authToken invalid");
-      this.sendErrorAndClose(
-        ws,
-        "AUTH_TOKEN_INVALID",
-        "Invalid auth token",
-        WsCloseCode.AUTH_FAILED,
-      );
-      return;
-    }
-
-    const result = await requestPairing(publicKey);
-
-    if (!result.ok) {
-      const code =
-        result.reason === "collision"
-          ? "PAIRING_CODE_COLLISION"
-          : "TOO_MANY_PENDING";
-      const message =
-        result.reason === "collision"
-          ? "Pairing code collision — regenerate keypair"
-          : "Too many pending pairing requests";
-      this.sendErrorAndClose(ws, code, message, WsCloseCode.AUTH_FAILED);
-      return;
-    }
-
-    log.info({ connId, code: result.code }, "Pairing request registered");
-    this.sendMessage(ws, "pairing.pending", { code: result.code });
-
-    try {
-      ws.close(
-        WsCloseCode.PAIRING_PENDING.code,
-        WsCloseCode.PAIRING_PENDING.reason,
-      );
-    } catch {
-      // ignore
-    }
   }
 
   startTimeout(ws: WSContext, connId?: string): void {

@@ -48,10 +48,9 @@ Monorepo using pnpm workspaces.
         |--- auth.response { signature } ---------->|                                  |
         |<-- auth.ok { activeSession? } ------------|                                  |
         |                                            |                                  |
-        |  [If KEY_NOT_APPROVED → pairing flow]      |                                  |
-        |--- pairing { publicKey, authToken } ----->|                                  |
-        |<-- pairing.pending { code } --------------|                                  |
-        |                                  (close)  |                                  |
+        |  [If KEY_NOT_APPROVED]                     |                                  |
+        |<-- auth.error + close(4409) --------------|                                  |
+        |  Client derives pairing code locally       |                                  |
         |  [User approves via CLI, then reconnect]   |                                  |
         |                                            |                                  |
         |--- session.open { workspacePath } -------->| Create session (idle)             |

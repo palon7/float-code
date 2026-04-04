@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import type { ServerMessage, AuthChallenge } from "@float-code/shared/protocol";
 import { WsCloseCode } from "@float-code/shared/protocol";
+import { derivePairingCode } from "@float-code/shared/crypto/pairing-code";
 import { signChallenge, type Keypair } from "../auth/keypair.js";
 
 export type ConnectionStatus =
@@ -20,7 +21,6 @@ const NON_RETRYABLE_CODES = new Set<number>([
   WsCloseCode.AUTH_FAILED.code,
   WsCloseCode.AUTH_TIMEOUT.code,
   WsCloseCode.KEY_NOT_APPROVED.code,
-  WsCloseCode.PAIRING_PENDING.code,
 ]);
 
 function getRetryDelay(attempt: number): number {
@@ -132,14 +132,8 @@ export class WsClient {
           this.setStatus({ state: "connected" });
         } else if (msg.type === "auth.error") {
           if (msg.code === "KEY_NOT_APPROVED") {
-            ws.send(
-              JSON.stringify({
-                type: "pairing",
-                publicKey: this.keypair.publicKey,
-                authToken: this.authToken,
-                timestamp: new Date().toISOString(),
-              }),
-            );
+            const code = derivePairingCode(this.keypair.publicKey);
+            this.setStatus({ state: "pairing", code });
             return;
           }
           this.setStatus({
@@ -147,9 +141,6 @@ export class WsClient {
             reason: msg.message ?? "auth failed",
           });
           ws.close();
-          return;
-        } else if (msg.type === "pairing.pending") {
-          this.setStatus({ state: "pairing", code: msg.code });
           return;
         }
 
@@ -166,8 +157,16 @@ export class WsClient {
       this.ws = null;
 
       if (this.intentionalClose) return;
-
       if (this.status.state === "pairing") return;
+
+      // auth.error が届く前に close だけ観測されるケースのフォールバック
+      if (code === WsCloseCode.KEY_NOT_APPROVED.code) {
+        this.setStatus({
+          state: "pairing",
+          code: derivePairingCode(this.keypair.publicKey),
+        });
+        return;
+      }
 
       if (NON_RETRYABLE_CODES.has(code)) {
         if (this.status.state !== "error") {

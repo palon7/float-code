@@ -187,7 +187,6 @@ function MessageView({
       );
 
     case "auth.challenge":
-    case "pairing.pending":
       return null;
 
     default:

@@ -59,15 +59,13 @@ Client                                          Server
   |< -- auth.ok { activeSession? } --------------- |
   |                                                |
   |  NO:                                           |
-  |< -- auth.error { code: "KEY_NOT_APPROVED" } --|
+  |                                                | Auto-register pending pairing
+  |< -- auth.error { KEY_NOT_APPROVED } ----------|
+  |                                                | Close connection (4409)
+  |  Client derives pairing code locally           |
+  |  (SHA-256(publicKey) → Base32 → XXXX-XXXX-XXXX)|
   |                                                |
-  |--- pairing { publicKey, authToken } --------- >|
-  |                                                | Verify authToken
-  |                                                | Add to pending-pairings.json
-  |< -- pairing.pending { code: "XXXX-XXXX-XXXX" }|
-  |                                                | Close connection (4410)
-  |                                                |
-  |  [User approves on PC via CLI tool]            |
+  |  [User approves on server via CLI]             |
   |                                                |
   |--- WS connect (retry) ---------------------- >|
   |--- auth { publicKey, authToken } ----------- >|
@@ -98,14 +96,12 @@ Client -> Server:
 
 - `auth` `{ publicKey: string, authToken: string }` -- Initial authentication
 - `auth.response` `{ signature: string }` -- Signed challenge response (hex-encoded)
-- `pairing` `{ publicKey: string, authToken: string }` -- Pairing request (sent after `KEY_NOT_APPROVED`)
 
 Server -> Client:
 
 - `auth.challenge` `{ challenge: AuthChallenge }` -- Challenge object
 - `auth.ok` `{ activeSession? }` -- Authentication succeeded
-- `auth.error` `{ code: AuthErrorCode, message: string }` -- Authentication failed
-- `pairing.pending` `{ code: string }` -- Pairing request accepted, connection closed after
+- `auth.error` `{ code: AuthErrorCode, message: string }` -- Authentication failed. For `KEY_NOT_APPROVED`, the server auto-registers a pending pairing and closes with 4409. The client derives the pairing code locally from its own public key.
 
 ### Input validation
 
@@ -132,10 +128,9 @@ Invalid payloads are rejected with `auth.error` without reaching the authenticat
 
 | Code | Reason             | Description                                             |
 | ---- | ------------------ | ------------------------------------------------------- |
-| 4401 | `auth_timeout`     | Authentication timeout (existing)                       |
-| 4403 | `auth_failed`      | Authentication failed (existing)                        |
-| 4409 | `key_not_approved` | Public key not in approved list                         |
-| 4410 | `pairing_pending`  | Pairing request registered, awaiting approval           |
+| 4401 | `auth_timeout`     | Authentication timeout                                  |
+| 4403 | `auth_failed`      | Authentication failed                                   |
+| 4409 | `key_not_approved` | Public key not approved, pending pairing registered      |
 
 ## Approved keys storage
 
@@ -254,7 +249,7 @@ All files containing secrets or keys use `writeSecretJsonAtomic` with `0600` per
 | --------------------------------- | ----------------------------------------------- |
 | `server/src/auth/challenge.ts`    | Challenge generation and signature verification |
 | `server/src/auth/pairing.ts`      | Pairing flow logic, pending storage             |
-| `server/src/auth/pairing-code.ts` | SHA-256 -> Base32 pairing code derivation        |
+| `shared/src/crypto/pairing-code.ts` | SHA-256 -> Base32 pairing code derivation (used by server and clients) |
 | `server/src/auth/approved-keys.ts`| Approved key store (CRUD)                        |
 | `server/src/local-server.ts`      | Localhost management Hono instance              |
 | `server/src/cli/index.ts`         | CLI subcommand entry point                      |
