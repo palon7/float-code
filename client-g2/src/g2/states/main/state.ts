@@ -7,7 +7,12 @@ import { useAppStore } from "../../../app/app-store";
 import { useSessionStore } from "../../../client/session-store";
 import { getEventType } from "../../runtime/event-utils";
 import { MAX_CONTENT_BYTES, MAX_LOG_ROWS } from "../../../constants";
-import { stripAnsiEscapes, truncateForDisplay } from "../../text-utils";
+import {
+  stripAnsiEscapes,
+  truncateForDisplay,
+  truncateToBytes,
+  byteLength,
+} from "../../text-utils";
 import { buildMainPage } from "./view";
 import { formatStatusText } from "./status-icon";
 import { createMenuState } from "../menu/state";
@@ -17,9 +22,11 @@ import { createVoiceListeningState } from "../voice-listening/state";
 import { isSessionSyncMessage, hasActiveSession } from "../sync-helpers";
 
 const BLINK_INTERVAL_MS = 1000;
+const MAX_HISTORY_BYTES = 1500;
 
 export function createMainState(): G2State {
   let transitioning = false;
+  let historyMode = false;
   let unsubSession: (() => void) | null = null;
   let blinkTimer: ReturnType<typeof setInterval> | null = null;
   let blinkPhase = false;
@@ -28,6 +35,7 @@ export function createMainState(): G2State {
   let lastLog = "";
 
   function updateStatus(ctx: G2Context): void {
+    if (historyMode) return;
     const status = formatStatusText(
       useSessionStore.getState().getStatusInfo(),
       blinkPhase,
@@ -55,8 +63,31 @@ export function createMainState(): G2State {
 
   function updateDisplay(ctx: G2Context): void {
     updateStatus(ctx);
+    if (historyMode) return;
     // BLE 送信中は計算をスキップ。ドレイン完了時に onDrainIdle で再計算される
     if (ctx.display.hasPendingUpdate("log")) return;
+    updateLog(ctx);
+  }
+
+  function enterHistory(ctx: G2Context): void {
+    if (historyMode) return;
+    historyMode = true;
+    const rawLog = stripAnsiEscapes(useSessionStore.getState().getLogText());
+    const text = truncateToBytes(rawLog, MAX_HISTORY_BYTES);
+    ctx.display.onDebugLog?.(
+      `enterHistory: ${byteLength(rawLog)}B -> ${byteLength(text)}B (${text.length} chars)`,
+    );
+    ctx.display.updateText("status", " History | Double Tap to Exit");
+    ctx.display.updateText("log", text);
+  }
+
+  function exitHistory(ctx: G2Context): void {
+    historyMode = false;
+    // lastStatus をリセットして次の updateStatus で確実に送信させる
+    lastStatus = "";
+    lastRawLog = "";
+    lastLog = "";
+    updateStatus(ctx);
     updateLog(ctx);
   }
 
@@ -77,7 +108,21 @@ export function createMainState(): G2State {
   function handleG2(ctx: G2Context, event: EvenHubEvent): void {
     const eventType = getEventType(event);
 
+    if (eventType === OsEventTypeList.SCROLL_TOP_EVENT) {
+      if (!historyMode) enterHistory(ctx);
+      return;
+    }
+
+    if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
+      if (historyMode) exitHistory(ctx);
+      return;
+    }
+
     if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+      if (historyMode) {
+        exitHistory(ctx);
+        return;
+      }
       if (!useAppStore.getState().apiKey) return;
       transitioning = true;
       ctx.transition(createVoiceListeningState());
@@ -114,7 +159,9 @@ export function createMainState(): G2State {
       );
 
       unsubSession = useSessionStore.subscribe(() => updateDisplay(ctx));
-      ctx.display.onDrainIdle = () => updateLog(ctx);
+      ctx.display.onDrainIdle = () => {
+        if (!historyMode) updateLog(ctx);
+      };
 
       blinkPhase = false;
       if (blinkTimer) clearInterval(blinkTimer);
