@@ -15,6 +15,7 @@ import {
 } from "../sync-helpers";
 
 export function createMenuState(): G2State {
+  let entered = false;
   let transitioning = false;
   let enteredSessionId: string | null = null;
 
@@ -74,12 +75,13 @@ export function createMenuState(): G2State {
     async enter(ctx: G2Context) {
       enteredSessionId = getActiveSessionId();
       await ctx.display.setPage(buildMenuPage());
+      entered = true;
     },
 
     handle(ctx, event) {
       if (transitioning) return;
       if (event.kind === "cc") handleCc(ctx, event.message);
-      else if (event.kind === "g2") handleG2(ctx, event.event);
+      else if (event.kind === "g2" && entered) handleG2(ctx, event.event);
     },
   };
 }
