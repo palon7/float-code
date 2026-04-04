@@ -53,7 +53,9 @@ export function buildSessionSelectPage(
   };
 }
 
-export function buildSessionLoadingPage(): G2PageDef {
+export function buildSessionLoadingPage(
+  message = "Loading sessions...",
+): G2PageDef {
   return {
     textContainers: [
       new TextContainerProperty({
@@ -65,7 +67,7 @@ export function buildSessionLoadingPage(): G2PageDef {
         borderColor: 5,
         paddingLength: 4,
         containerName: "status",
-        content: "Loading sessions...",
+        content: message,
       }),
     ],
   };
