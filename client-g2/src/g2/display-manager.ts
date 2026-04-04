@@ -19,7 +19,6 @@ export class G2DisplayManager {
   private displayEpoch = 0;
   private updateState = new Map<string, { desired: string | null }>();
   private lastRebuildAt = 0;
-  private inflightUpgrades = new Set<Promise<unknown>>();
   onDrainIdle: (() => void) | null = null;
   onDebugLog: ((message: string) => void) | null = null;
 
@@ -61,7 +60,6 @@ export class G2DisplayManager {
     }
     allContainers[allContainers.length - 1].isEventCapture = 1;
 
-    await this.waitInflightUpgrades();
     await this.rebuild(page, seq);
     this.containerIdMap = nextMap;
     this.onDebugLog?.(`applyPage #${seq} done`);
@@ -102,7 +100,7 @@ export class G2DisplayManager {
       entry.desired = null;
       didSend = true;
 
-      const p = this.bridge.textContainerUpgrade(
+      await this.bridge.textContainerUpgrade(
         new TextContainerUpgrade({
           containerID: id,
           containerName: containerName,
@@ -111,12 +109,6 @@ export class G2DisplayManager {
           content: text,
         }),
       );
-      this.inflightUpgrades.add(p);
-      try {
-        await p;
-      } finally {
-        this.inflightUpgrades.delete(p);
-      }
     }
 
     // epoch が変わった場合は setPage 側で updateState.clear() 済みなので削除しない
@@ -126,22 +118,6 @@ export class G2DisplayManager {
         this.onDrainIdle?.();
       }
     }
-  }
-
-  // rebuild 前に in-flight の textContainerUpgrade を待つ（タイムアウト付き）
-  private static readonly UPGRADE_DRAIN_TIMEOUT_MS = 500;
-
-  private async waitInflightUpgrades(): Promise<void> {
-    if (this.inflightUpgrades.size === 0) return;
-    this.onDebugLog?.(
-      `waiting for ${this.inflightUpgrades.size} inflight upgrade(s)`,
-    );
-    await Promise.race([
-      Promise.allSettled(this.inflightUpgrades),
-      new Promise<void>((r) =>
-        setTimeout(r, G2DisplayManager.UPGRADE_DRAIN_TIMEOUT_MS),
-      ),
-    ]);
   }
 
   // Flutter 側が応答しない場合にチェーンが詰まるのを防ぐタイムアウト
