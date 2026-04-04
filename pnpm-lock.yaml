@@ -151,9 +151,6 @@ importers:
 
   server:
     dependencies:
-      '@float-code/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@hono/node-server':
         specifier: ^1.14.1
         version: 1.19.11(hono@4.12.9)
@@ -179,6 +176,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.1.0(jiti@2.6.1))
+      '@float-code/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
