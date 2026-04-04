@@ -28,10 +28,10 @@ export class WsClient {
     private keypair: Keypair,
   ) {}
 
-  updateConfig(wsUrl: string, authToken: string, keypair: Keypair): void {
+  updateConfig(wsUrl: string, authToken: string, keypair?: Keypair): void {
     this.wsUrl = wsUrl;
     this.authToken = authToken;
-    this.keypair = keypair;
+    if (keypair) this.keypair = keypair;
   }
 
   connect(): void {

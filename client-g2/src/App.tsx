@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AppShell, NavBar, Page } from "even-toolkit/web";
 import { useAppRuntime } from "./hooks/use-app-runtime";
 import { ChatTab } from "./components/ChatTab";
+import { PairingBanner } from "./components/PairingBanner";
 import { SettingsTab } from "./components/SettingsTab";
 import { LogTab } from "./components/LogTab";
 
@@ -36,6 +37,7 @@ function App() {
           {activeTab === "log" && <LogTab />}
         </Page>
       </AppShell>
+      <PairingBanner />
     </div>
   );
 }

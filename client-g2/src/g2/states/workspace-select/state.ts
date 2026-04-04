@@ -10,7 +10,6 @@ import {
 } from "./view";
 import { createSessionSelectState } from "../session-select/state";
 import { createMainState } from "../main/state";
-import { createErrorState } from "../error/state";
 import { isSessionSyncMessage, hasActiveSession } from "../sync-helpers";
 
 export function createWorkspaceSelectState(): G2State {
@@ -52,11 +51,6 @@ export function createWorkspaceSelectState(): G2State {
     }
   }
 
-  function handleWs(ctx: G2Context, reason: string): void {
-    transitioning = true;
-    ctx.transition(createErrorState(reason));
-  }
-
   function handleCc(ctx: G2Context, msg: ServerMessage): void {
     if (isSessionSyncMessage(msg) && hasActiveSession()) {
       transitioning = true;
@@ -94,9 +88,7 @@ export function createWorkspaceSelectState(): G2State {
 
     async handle(ctx, event) {
       if (transitioning) return;
-      if (event.kind === "ws" && event.status.state === "error")
-        handleWs(ctx, event.status.reason);
-      else if (event.kind === "cc") handleCc(ctx, event.message);
+      if (event.kind === "cc") handleCc(ctx, event.message);
       else if (event.kind === "g2") await handleG2(ctx, event.event);
     },
   };
