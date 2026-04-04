@@ -200,6 +200,8 @@ export class WsAuthenticator {
     message: string,
     closeCode: { code: number; reason: string },
   ): void {
+    this.clearAuthTimeout(ws);
+    this.states.delete(ws);
     this.sendError(ws, code, message);
     try {
       ws.close(closeCode.code, closeCode.reason);

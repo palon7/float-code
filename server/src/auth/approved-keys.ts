@@ -84,7 +84,7 @@ export function removeByCode(pairingCode: string): Promise<boolean> {
 
 export async function listKeys(): Promise<ApprovedKey[]> {
   const data = await load();
-  return data.keys;
+  return data.keys.slice();
 }
 
 export async function findByPublicKey(
