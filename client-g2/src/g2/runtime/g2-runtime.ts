@@ -66,7 +66,7 @@ export class G2Runtime {
       startVoiceSession: (opts) => this.startVoiceSession(opts),
       stopVoiceSession: (reason) => this.stopVoiceSession(reason),
       getVoiceSession: () => this.voiceSession,
-      requestConnect: () => void this.lifecycle.requestConnect(),
+      requestConnect: () => this.requestConnect(),
     };
 
     this.lifecycle = new ConnectionLifecycle({
@@ -75,6 +75,10 @@ export class G2Runtime {
       wsClient: options.wsClient,
       httpClient: options.httpClient,
     });
+  }
+
+  requestConnect(): void {
+    void this.lifecycle.requestConnect();
   }
 
   async start(): Promise<void> {

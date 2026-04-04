@@ -1,16 +1,11 @@
 import { Card } from "even-toolkit/web";
 import { useAppStore } from "../app/app-store";
+import { useRuntimeActions } from "../app/runtime-actions-context";
 
 export function PairingBanner() {
   const wsStatus = useAppStore((s) => s.wsStatus);
-  const wsClient = useAppStore((s) => s.wsClient);
+  const { requestConnect } = useRuntimeActions();
   if (wsStatus.state !== "pairing") return null;
-
-  const handleRetry = () => {
-    if (!wsClient) return;
-    wsClient.disconnect();
-    wsClient.connect();
-  };
 
   return (
     <div className="fixed bottom-4 left-1/2 z-50 w-full max-w-[640px] -translate-x-1/2 px-3">
@@ -25,7 +20,7 @@ export function PairingBanner() {
           </p>
           <button
             type="button"
-            onClick={handleRetry}
+            onClick={requestConnect}
             className="mt-2 rounded-[6px] bg-accent px-4 py-1.5 text-[13px] text-text-highlight transition-colors"
           >
             Retry

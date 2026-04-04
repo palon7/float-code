@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EvenAppBridge,
   waitForEvenAppBridge,
@@ -8,12 +8,17 @@ import { createAppRuntime } from "../app/create-app-runtime";
 import { useAppStore, setupSettingsPersistence } from "../app/app-store";
 import { useSessionStore } from "../client/session-store";
 import { G2DisplayManager } from "../g2/display-manager";
+import {
+  NOOP_ACTIONS,
+  type RuntimeActions,
+} from "../app/runtime-actions-context";
 
 const BRIDGE_TIMEOUT_MS = 3000;
 
-export function useAppRuntime(): void {
+export function useAppRuntime(): RuntimeActions {
   const displayManager = useMemo(() => new G2DisplayManager(), []);
   const runtimeRef = useRef<AppRuntimeHandle | null>(null);
+  const [actions, setActions] = useState<RuntimeActions>(NOOP_ACTIONS);
 
   const appendDebugLog = useAppStore((state) => state.appendDebugLog);
   const setBridgeStatus = useAppStore((state) => state.setBridgeStatus);
@@ -82,6 +87,10 @@ export function useAppRuntime(): void {
       });
 
       await handle.runtime.start();
+      if (disposed) return;
+      setActions({
+        requestConnect: () => handle.runtime.requestConnect(),
+      });
     }
 
     init().catch((error) => {
@@ -99,7 +108,10 @@ export function useAppRuntime(): void {
       useAppStore.getState().setHttpClient(null);
       runtimeRef.current?.runtime.dispose();
       runtimeRef.current = null;
+      setActions(NOOP_ACTIONS);
       useSessionStore.getState().reset();
     };
   }, [appendDebugLog, displayManager, setBridgeStatus, setWsStatus]);
+
+  return actions;
 }
