@@ -17,7 +17,6 @@ const LIFECYCLE_KEYS = {
   wsPairing: "ws-pairing",
   wsDisconnected: "ws-disconnected",
   authOk: "auth-ok",
-  authError: "auth-error",
 } as const;
 
 type LifecycleKey = (typeof LIFECYCLE_KEYS)[keyof typeof LIFECYCLE_KEYS];
@@ -40,6 +39,8 @@ export class ConnectionLifecycle {
 
     const { serverHost, serverToken } = useAppStore.getState();
     if (!serverHost || !serverToken) {
+      this.host.wsClient.disconnect();
+      this.clearConnectTimeout();
       await this.host.transition(
         createErrorState("Please configure server in app settings"),
       );
@@ -117,12 +118,7 @@ export class ConnectionLifecycle {
       );
       return true;
     }
-    if (message.type === "auth.error") {
-      this.lifecycleTransition(LIFECYCLE_KEYS.authError, () =>
-        createErrorState(message.message),
-      );
-      return true;
-    }
+    // auth.error は WsClient が ws error status を発火するため、handleWs で処理される
     return false;
   }
 
