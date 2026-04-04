@@ -43,33 +43,40 @@ Monorepo using pnpm workspaces.
 [G2 / CLI Client]                                [Server]                         [Claude CLI]
         |                                            |                                  |
         |--- WS connect --------------------------->|                                  |
-        |--- { type: "auth", token } -------------->|                                  |
-        |<-- { type: "auth.ok", activeSession? } ---|                                  |
+        |--- auth { publicKey, authToken } -------->|                                  |
+        |<-- auth.challenge { challenge } ----------|                                  |
+        |--- auth.response { signature } ---------->|                                  |
+        |<-- auth.ok { activeSession? } ------------|                                  |
         |                                            |                                  |
-        |--- { type: "session.open",                 |                                  |
-        |      workspacePath } -------------------->| Create session (idle)             |
-        |<-- { type: "session.opened",               |                                  |
-        |      status: "idle", entries: [] } --------|                                  |
+        |  [If KEY_NOT_APPROVED → pairing flow]      |                                  |
+        |--- pairing { publicKey, authToken } ----->|                                  |
+        |<-- pairing.pending { code } --------------|                                  |
+        |                                  (close)  |                                  |
+        |  [User approves via CLI, then reconnect]   |                                  |
         |                                            |                                  |
-        |--- { type: "session.send",                 |                                  |
-        |      text: "..." } ---------------------->| client.start(text) ------------->|
+        |--- session.open { workspacePath } -------->| Create session (idle)             |
+        |<-- session.opened                          |                                  |
+        |      { status: "idle", entries: [] } ------|                                  |
+        |                                            |                                  |
+        |--- session.send { text: "..." } --------->| client.start(text) ------------->|
         |                                            |  status: spawning                |
         |                                            |<-- system entry ------------------|
-        |<-- { type: "session.started",              |  status: running                 |
-        |      sessionId, status: "running" } -------|                                  |
+        |<-- session.started                         |  status: running                 |
+        |      { sessionId, status: "running" } -----|                                  |
         |                                            |                                  |
-        |<-- { type: "session.entry", entry } -------|<-- entry (streaming) ------------|
-        |<-- { type: "session.entry", entry } -------|<-- entry (streaming) ------------|
+        |<-- session.entry { entry } ----------------|<-- entry (streaming) ------------|
+        |<-- session.entry { entry } ----------------|<-- entry (streaming) ------------|
         |                                            |                                  |
         |                                            |<-- CLI process exit --------------|
-        |<-- { type: "session.done",                 |  status: idle                    |
-        |      sessionId, exitReason } --------------|                                  |
+        |<-- session.done                            |  status: idle                    |
+        |      { sessionId, exitReason } ------------|                                  |
 ```
 
+- Authentication uses Ed25519 challenge-response. New devices go through a pairing flow
 - After authentication, session events are automatically broadcast to all clients
 - `session.open` only prepares the context. `session.send` is the trigger for CLI startup
 - On reconnect, restore current state via `activeSession` in `auth.ok`
-- See [protocol.md](docs/server/protocol.md) for details
+- See [protocol.md](docs/server/protocol.md) and [pairing.md](docs/server/pairing.md) for details
 
 ## Documentation
 
@@ -78,6 +85,7 @@ Monorepo using pnpm workspaces.
   - [operations.md](docs/server/operations.md): Authentication, persistence, test plan
   - [protocol.md](docs/server/protocol.md): REST API, WebSocket protocol, reconnection, Workspace management
   - [session.md](docs/server/session.md): Session management, two-layer resolution, resume
+  - [pairing.md](docs/server/pairing.md): Ed25519 public key authentication, device pairing, management server
 - docs/todo/ — Design documents for unimplemented features
   - [roadmap.md](docs/todo/roadmap.md): Overview of Phase 4/5
   - [permission.md](docs/todo/permission.md): Permission model, MCP integration (Phase 4)

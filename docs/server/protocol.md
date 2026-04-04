@@ -86,7 +86,9 @@ All messages share the following fields:
 
 ### Client -> Server
 
-- `auth` `{ token }`
+- `auth` `{ publicKey, authToken }` -- See [pairing.md](pairing.md) for full auth flow
+- `auth.response` `{ signature }` -- Signed challenge response (hex-encoded Ed25519 signature)
+- `pairing` `{ publicKey, authToken }` -- Pairing request (sent after `KEY_NOT_APPROVED`)
 - `session.open` -- Open a session (context setup). Delivers `session.opened` to all clients. Claude CLI is not started
   - New: `{ workspacePath }` -- Create an empty session in `idle` state
   - Resume: `{ sessionId, workspacePath }` -- Load session history from disk, deliver `session.opened` with `entries[]`. Load in `idle` state
@@ -104,9 +106,11 @@ All messages share the following fields:
 
 ### Server -> Client
 
+- `auth.challenge` `{ challenge: AuthChallenge }` -- Challenge object for Ed25519 signing
 - `auth.ok` `{ activeSession? }` -- Authentication succeeded. Includes current state if an active session exists
   - `activeSession`: `{ sessionId?, status, meta?, entries[], pendingPermission? }`
-- `auth.error` `{ message }`
+- `auth.error` `{ code: AuthErrorCode, message }` -- Authentication/pairing error
+- `pairing.pending` `{ code }` -- Pairing request accepted, connection closed after this message
 - `session.opened` `{ sessionId?, status, meta?, entries[] }` -- Session open/load completion notification (delivered to all clients). Treated as an authoritative snapshot. `entries=[]` is normal for a new session
 - `session.started` `{ sessionId, status: "running", meta? }` -- Lifecycle event when Claude CLI actually enters running state (delivered to all clients). Does not include `entries` as it is not a snapshot. Clients that join mid-session receive a snapshot via `auth.ok.activeSession`
 - `session.entry` `{ sessionId, entry }` -- Streaming event (delivered to all clients)
@@ -121,6 +125,7 @@ All messages share the following fields:
 - Multiple authenticated connections can be maintained simultaneously
 - Unauthenticated state does not affect existing connections (DoS prevention)
 - Authentication timeout (10s): unauthenticated connections that exceed the timeout are closed with `close(4401, "auth_timeout")`
+- New close codes: `4409` (key_not_approved), `4410` (pairing_pending)
 - Session events are broadcast to all authenticated connections
 - Any client can send `session.open` / `session.send` / `session.interrupt`, etc. (no operation permission distinction)
 
@@ -228,7 +233,7 @@ type WorkspaceInfo = {
 
 ### Persistence
 
-File: `server/data/workspaces.json`
+File: `~/.config/float-code/server/workspaces.json`
 
 ```json
 {

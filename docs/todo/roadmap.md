@@ -2,7 +2,7 @@
 
 ## Phase 4: permission integration
 
-- Co-located permission MCP tool
+- Co-located permission MCP tool (shares localhost management server with pairing)
 - `session.permission.request` / `permission.respond`
 - allow/always_allow/deny UI round-trip
 

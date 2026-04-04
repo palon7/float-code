@@ -10,85 +10,119 @@
 ### File Structure
 
 ```
-shared/src/                          # @float-code/shared — message types are defined here
-├── protocol/
-│   ├── types.ts                     # All message type definitions
-│   └── entry-guard.ts               # Entry validation
+shared/src/                          # @float-code/shared -- message types are defined here
+  protocol/
+    types.ts                         # All message type definitions (AuthChallenge, AuthErrorCode, etc.)
+    entry-guard.ts                   # Entry validation
 
 server/src/
-├── index.ts                         # Entry point (startup / shutdown)
-├── app.ts                           # Hono app assembly
-├── config.ts                        # Server configuration loading
-├── auth/
-│   └── shared-token.ts              # Token authentication
-├── api/
-│   ├── auth-middleware.ts           # REST API authentication middleware
-│   ├── error-response.ts            # REST API error response helper
-│   ├── workspaces.ts                # GET /api/workspaces/recent, browse, detail
-│   └── sessions.ts                  # GET /api/sessions, GET /api/sessions/:id
-├── workspace/
-│   ├── workspace-store.ts           # Read/write data/workspaces.json
-│   ├── browse.ts                    # Filesystem browsing
-│   ├── detail.ts                    # Workspace detail retrieval
-│   └── errors.ts                    # Workspace-related error definitions
-├── session/
-│   ├── session-manager.ts           # Active session management
-│   ├── entry-buffer.ts              # Ring buffer implementation
-│   └── pid-tracker.ts               # Claude CLI PID tracking / leak prevention
-├── permission/                      # Planned for Phase 4
-├── utils/
-│   ├── fs.ts                        # Atomic writes / JSON reading
-│   └── logger.ts                    # pino-based logger
-└── ws/
-    ├── heartbeat.ts                 # Connection liveness monitoring via wss.clients
-    ├── connection-registry.ts       # Multi-client connection management + broadcast
-    └── gateway.ts                   # Auth flow + message routing
+  index.ts                           # Entry point (startup / shutdown / CLI dispatch)
+  app.ts                             # Hono app assembly (public server)
+  config.ts                          # Server configuration loading (v2: networkMode, localPort, etc.)
+  local-server.ts                    # Localhost management server (pairing endpoints)
+  auth/
+    shared-token.ts                  # authToken verification (timing-safe)
+    challenge.ts                     # Ed25519 challenge generation and signature verification
+    approved-keys.ts                 # Approved key store (CRUD, Promise-chain lock)
+    pairing.ts                       # Pairing flow logic, pending storage (TTL 10min, max 5)
+    pairing-code.ts                  # SHA-256 -> Base32 pairing code derivation
+  cli/
+    index.ts                         # CLI subcommand dispatcher
+    pairing.ts                       # `pairing list/approve/revoke` commands
+  api/
+    auth-middleware.ts               # REST API authentication middleware
+    error-response.ts                # REST API error response helper
+    workspaces.ts                    # GET /api/workspaces/recent, browse, detail
+    sessions.ts                      # GET /api/sessions, GET /api/sessions/:id
+  workspace/
+    workspace-store.ts               # Read/write workspaces.json
+    browse.ts                        # Filesystem browsing
+    detail.ts                        # Workspace detail retrieval
+    errors.ts                        # Workspace-related error definitions
+  session/
+    session-manager.ts               # Active session management
+    entry-buffer.ts                  # Ring buffer implementation
+    pid-tracker.ts                   # Claude CLI PID tracking / leak prevention
+  permission/                        # Planned for Phase 4
+  utils/
+    fs.ts                            # Atomic writes (writeJsonAtomic, writeSecretJsonAtomic), dataPath
+    logger.ts                        # pino-based logger
+  ws/
+    heartbeat.ts                     # Connection liveness monitoring via wss.clients
+    connection-registry.ts           # Multi-client connection management + broadcast
+    gateway.ts                       # Auth flow + message routing
+    ws-authenticator.ts              # Challenge-response authentication state machine
+    message-guards.ts                # Runtime type guards for pre-auth messages
 ```
+
+### Data Directory
+
+All data files are stored in `~/.config/float-code/server/` (XDG-compliant). See [pairing.md](../docs/server/pairing.md) for details.
 
 ### Request Flow
 
 ```
 Client connects
-    │
-    ▼
-[Hono: GET /ws] ──upgrade──> [WSContext created]
-    │
-    ▼
+    |
+    v
+[Hono: GET /ws] --upgrade--> [WSContext created]
+    |
+    v
 gateway.handleOpen()
-    │  Start 10-second auth timer
-    ▼
-Client sends {"type":"auth","token":"..."}
-    │
-    ▼
+    |  Start 10-second auth timer
+    v
+Client sends auth { publicKey, authToken }
+    |
+    v
 gateway.handleMessage()
-    ├─ Unauthenticated → handleAuth()
-    │    ├─ Invalid token → close(4403)
-    │    └─ Valid token
-    │         ├─ Add to ConnectionRegistry (multiple connections allowed)
-    │         └─ Send auth.ok (including activeSession if present)
-    │
-    └─ Authenticated → handleAuthenticatedMessage()
-         ├─ ping → return pong
-         ├─ session.open → SessionManager.openSession()
-         ├─ session.send → SessionManager.send()
-         ├─ session.interrupt → SessionManager.interrupt()
-         └─ session.abort → SessionManager.abort()
+    |  Validate via message-guards (format check)
+    v
+authenticator.handleAuth()
+    |-- authToken invalid --> close(4403)
+    |-- publicKey not approved --> auth.error(KEY_NOT_APPROVED)
+    |                               |
+    |                  Client sends pairing { publicKey, authToken }
+    |                               |
+    |                  authenticator.handlePairing()
+    |                               --> pairing.pending { code }
+    |                               --> close(4410)
+    |
+    +-- publicKey approved --> auth.challenge { challenge }
+                                 |
+                    Client sends auth.response { signature }
+                                 |
+                    authenticator.handleResponse()
+                         |-- Invalid --> close(4403)
+                         +-- Valid
+                              |-- Add to ConnectionRegistry
+                              +-- Send auth.ok (including activeSession if present)
+
+Authenticated --> handleAuthenticatedMessage()
+    |-- ping --> return pong
+    |-- session.open --> SessionManager.openSession()
+    |-- session.send --> SessionManager.send()
+    |-- session.interrupt --> SessionManager.interrupt()
+    +-- session.abort --> SessionManager.abort()
 ```
 
 ### Separation of Concerns
 
-| Module                   | Responsibility                                                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `heartbeat.ts`           | Terminate dead connections via WebSocket protocol-level ping/pong. Uses `wss.clients` and is unaware of Gateway                      |
-| `connection-registry.ts` | Manages authenticated connections in a `Set`. broadcast/sendTo                                                                       |
-| `gateway.ts`             | Auth flow (including timeout) and message routing. Receives ConnectionRegistry from outside                                           |
-| `app.ts`                 | Hono route definitions and assembly of each module                                                                                   |
-| `index.ts`               | Server startup, heartbeat initialization, graceful shutdown                                                                           |
+| Module                   | Responsibility                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `heartbeat.ts`           | Terminate dead connections via WebSocket protocol-level ping/pong                  |
+| `connection-registry.ts` | Manages authenticated connections in a `Set`. broadcast/sendTo                    |
+| `message-guards.ts`      | Runtime type validation for pre-auth messages (publicKey format, signature format) |
+| `ws-authenticator.ts`    | Challenge-response auth state machine (awaiting_auth -> awaiting_response -> authenticated) |
+| `gateway.ts`             | Message routing. Delegates auth to authenticator, session ops to SessionManager   |
+| `app.ts`                 | Hono route definitions and assembly of each module                                |
+| `local-server.ts`        | Localhost-only Hono instance for pairing management endpoints                     |
+| `index.ts`               | Server startup, CLI dispatch, heartbeat init, graceful shutdown                   |
 
 ### Key Points
 
-- heartbeat and gateway are independent: heartbeat monitors all connections at the `wss` (ws package) level. gateway manages auth state at the Hono `WSContext` level. They operate at different layers
-- Nothing is possible before authentication: while in the `pendingAuth` Map, all messages other than `auth` are rejected
+- heartbeat and gateway are independent: heartbeat monitors all connections at the `wss` (ws package) level. gateway manages auth state at the Hono `WSContext` level
+- Authentication is multi-step: auth message -> challenge -> response -> auth.ok. All pre-auth messages are validated by type guards before processing
 - Multiple connections: authenticated clients are managed in a Set. Session events are broadcast to all clients
 - Maximum one active session at a time. `session.open` switches sessions (the previous session is aborted)
-
+- Two servers run simultaneously: the public server (configurable bind) and the localhost management server (127.0.0.1 only)
+- Concurrency safety: pairing and approved-keys stores use Promise-chain locks to prevent read-modify-write races

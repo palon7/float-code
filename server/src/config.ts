@@ -1,10 +1,9 @@
 import * as crypto from "node:crypto";
-import * as path from "node:path";
 import {
   readJsonSafe,
-  writeJsonAtomic,
-  ensureDir,
+  writeSecretJsonAtomic,
   dataPath,
+  configDir,
 } from "./utils/fs.js";
 import { logger } from "./utils/logger.js";
 
@@ -23,11 +22,14 @@ const STRING_ARRAY_KEYS = [
   "extraArgs",
 ] as const;
 const DEFAULT_PORT = 8080;
+const DEFAULT_LOCAL_PORT = 9090;
 const MAX_PORT = 65_535;
 const DEFAULT_PERMISSION_MODE = "acceptEdits";
+const NETWORK_MODES = ["local", "tailscale", "lan"] as const;
 
 type ClaudePermissionMode = (typeof PERMISSION_MODES)[number];
 type OptionalStringKey = (typeof OPTIONAL_STRING_KEYS)[number];
+export type NetworkMode = (typeof NETWORK_MODES)[number];
 
 export type ClaudeCliConfig = {
   model?: string;
@@ -42,9 +44,12 @@ export type ClaudeCliConfig = {
 };
 
 export type ServerConfig = {
-  version: 1;
+  version: 2;
   port: number;
   authToken: string;
+  localAuthToken: string;
+  localPort: number;
+  networkMode: NetworkMode;
   claude: ClaudeCliConfig;
 };
 
@@ -53,20 +58,31 @@ const CONFIG_PATH = dataPath("config.json");
 let cachedConfig: ServerConfig | null = null;
 
 export async function loadConfig(): Promise<ServerConfig> {
-  await ensureDir(path.dirname(CONFIG_PATH));
+  await import("node:fs/promises").then((fs) =>
+    fs.mkdir(configDir(), { recursive: true, mode: 0o700 }),
+  );
   const loaded = await readJsonSafe<unknown>(
     CONFIG_PATH,
     createDefaultConfig(),
   );
   const config = normalizeServerConfig(loaded);
 
+  let modified = false;
+
   if (!config.authToken) {
     config.authToken = crypto.randomBytes(32).toString("hex");
     logger.info({ path: CONFIG_PATH }, "Auth token generated");
+    modified = true;
   }
 
-  if (JSON.stringify(loaded) !== JSON.stringify(config)) {
-    await writeJsonAtomic(CONFIG_PATH, config);
+  if (!config.localAuthToken) {
+    config.localAuthToken = crypto.randomBytes(32).toString("hex");
+    logger.info({ path: CONFIG_PATH }, "Local auth token generated");
+    modified = true;
+  }
+
+  if (modified || JSON.stringify(loaded) !== JSON.stringify(config)) {
+    await writeSecretJsonAtomic(CONFIG_PATH, config);
     logger.info({ path: CONFIG_PATH }, "Config saved");
   }
 
@@ -85,9 +101,21 @@ function normalizeServerConfig(raw: unknown): ServerConfig {
   const record = asRecord(raw);
   const config = createDefaultConfig();
 
-  config.port = normalizePort(record?.port);
+  config.port = normalizePort(record?.port, DEFAULT_PORT);
   config.authToken =
     typeof record?.authToken === "string" ? record.authToken : "";
+  config.localAuthToken =
+    typeof record?.localAuthToken === "string" ? record.localAuthToken : "";
+  config.localPort = normalizePort(record?.localPort, DEFAULT_LOCAL_PORT);
+
+  const networkMode = record?.networkMode;
+  if (
+    typeof networkMode === "string" &&
+    (NETWORK_MODES as readonly string[]).includes(networkMode)
+  ) {
+    config.networkMode = networkMode as NetworkMode;
+  }
+
   config.claude = normalizeClaudeConfig(record?.claude);
 
   return config;
@@ -95,9 +123,12 @@ function normalizeServerConfig(raw: unknown): ServerConfig {
 
 function createDefaultConfig(): ServerConfig {
   return {
-    version: 1,
+    version: 2,
     port: DEFAULT_PORT,
     authToken: "",
+    localAuthToken: "",
+    localPort: DEFAULT_LOCAL_PORT,
+    networkMode: "local",
     claude: createDefaultClaudeConfig(),
   };
 }
@@ -147,14 +178,14 @@ function createDefaultClaudeConfig(): ClaudeCliConfig {
   };
 }
 
-function normalizePort(raw: unknown): number {
+function normalizePort(raw: unknown, defaultPort: number): number {
   if (
     typeof raw !== "number" ||
     !Number.isInteger(raw) ||
     raw <= 0 ||
     raw > MAX_PORT
   ) {
-    return DEFAULT_PORT;
+    return defaultPort;
   }
   return raw;
 }

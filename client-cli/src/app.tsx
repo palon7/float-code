@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import { useApp } from "ink";
 import { WsClient } from "./client/ws.js";
 import { HttpClient } from "./client/http.js";
+import type { Keypair } from "./auth/keypair.js";
 
 import { ChatView } from "./components/chat-view.js";
 import { WorkspaceSelector } from "./components/workspace-selector.js";
@@ -13,15 +14,16 @@ type AppProps = {
   wsUrl: string;
   httpUrl: string;
   token: string;
+  keypair: Keypair;
   clearScreen: () => void;
 };
 
-export function App({ wsUrl, httpUrl, token, clearScreen }: AppProps) {
+export function App({ wsUrl, httpUrl, token, keypair, clearScreen }: AppProps) {
   const { exit } = useApp();
   const [mode, setMode] = useState<AppMode>("chat");
   const [workspacePath, setWorkspacePath] = useState(process.cwd());
 
-  const [wsClient] = useState(() => new WsClient(wsUrl, token));
+  const [wsClient] = useState(() => new WsClient(wsUrl, token, keypair));
   const [httpClient] = useState(() => new HttpClient(httpUrl, token));
 
   useEffect(() => {

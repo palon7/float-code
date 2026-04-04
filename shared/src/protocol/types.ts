@@ -18,9 +18,30 @@ export type SessionStarted = {
   meta?: SessionStartedMeta;
 };
 
+// Challenge-response authentication
+
+export type AuthChallenge = {
+  kind: "float-code-auth-v1";
+  challengeId: string;
+  publicKey: string;
+  nonce: string;
+  issuedAt: string;
+  expiresAt: string;
+};
+
+export type AuthErrorCode =
+  | "KEY_NOT_APPROVED"
+  | "AUTH_TOKEN_INVALID"
+  | "SIGNATURE_INVALID"
+  | "PAIRING_CODE_COLLISION"
+  | "TOO_MANY_PENDING"
+  | "AUTH_TIMEOUT";
+
 export type ServerMessageMap = {
+  "auth.challenge": { challenge: AuthChallenge };
   "auth.ok": { activeSession?: SessionSnapshot };
-  "auth.error": { message: string };
+  "auth.error": { code: AuthErrorCode; message: string };
+  "pairing.pending": { code: string };
   "session.opened": SessionSnapshot;
   "session.started": SessionStarted;
   "session.entry": { sessionId: string; entry: ParsedEntry };
@@ -44,7 +65,9 @@ export type ServerMessageMap = {
 // Client -> Server message payloads
 
 export type ClientMessageMap = {
-  auth: { token: string };
+  auth: { publicKey: string; authToken: string };
+  "auth.response": { signature: string };
+  pairing: { publicKey: string; authToken: string };
   "session.open":
     | { workspacePath: string; sessionId?: never }
     | { workspacePath: string; sessionId: string };
@@ -87,6 +110,8 @@ export type ClientMessage = {
 export const WsCloseCode = {
   AUTH_TIMEOUT: { code: 4401, reason: "auth_timeout" },
   AUTH_FAILED: { code: 4403, reason: "auth_failed" },
+  KEY_NOT_APPROVED: { code: 4409, reason: "key_not_approved" },
+  PAIRING_PENDING: { code: 4410, reason: "pairing_pending" },
 } as const;
 
 // Shared types

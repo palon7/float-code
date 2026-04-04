@@ -12,8 +12,10 @@ src/
 ├── app/                        # App startup / runtime creation
 │   ├── app-store.ts            # zustand: holds runtime reference
 │   └── create-app-runtime.ts   # Assembles WsClient, HttpClient, G2Runtime
+├── auth/                       # Authentication
+│   └── keypair.ts              # Ed25519 keypair generation (localStorage)
 ├── client/                     # Server communication layer
-│   ├── ws.ts                   # WsClient: WebSocket connection, auth, reconnection
+│   ├── ws.ts                   # WsClient: WebSocket connection, challenge-response auth
 │   ├── http.ts                 # HttpClient: REST API (workspaces, sessions)
 │   ├── session-store.ts        # zustand: session state (reducer-based)
 │   ├── session-reducer.ts      # Pure transformation: ServerMessage → state
@@ -65,7 +67,9 @@ connecting ──(auth.ok + activeSession)──> main
      |                                      |
      +──(auth.ok, no session)──> workspace-select
      |                                |
-     +──(error)──> error         session-select
+     +──(pairing.pending)──> error   session-select
+     |    (shows pairing code)        |
+     +──(error)──> error              |
                      |                |
                      +───(retry)──> connecting
                                       

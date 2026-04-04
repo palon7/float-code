@@ -186,6 +186,10 @@ function MessageView({
         </Text>
       );
 
+    case "auth.challenge":
+    case "pairing.pending":
+      return null;
+
     default:
       return null;
   }
@@ -237,6 +241,8 @@ function statusText(status: ConnectionStatus): string {
       return "authenticating...";
     case "connected":
       return "connected";
+    case "pairing":
+      return `pairing: ${status.code}`;
     case "reconnecting":
       return `reconnecting (${status.attempt}/${MAX_RETRIES})...`;
     case "error":
@@ -248,6 +254,8 @@ function statusColor(status: ConnectionStatus): string {
   switch (status.state) {
     case "connected":
       return "green";
+    case "pairing":
+      return "yellow";
     case "error":
       return "red";
     case "connecting":
@@ -317,6 +325,8 @@ export function ChatView({
           clearScreen();
           setLogs([]);
           setSessionRunning(false);
+          // アクティブセッションがなければ自動でセッションを開く
+          wsClientRef.current.openSession({ workspacePath });
         }
         return;
       }
@@ -401,7 +411,7 @@ export function ChatView({
         return next;
       });
     },
-    [setHasActiveSession, setSessionRunning, clearScreen],
+    [setHasActiveSession, setSessionRunning, clearScreen, workspacePath],
   );
 
   useEffect(() => {

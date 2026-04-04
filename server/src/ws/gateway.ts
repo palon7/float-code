@@ -1,15 +1,24 @@
 import type { WSContext } from "hono/ws";
 import { ConnectionRegistry } from "./connection-registry.js";
 import { WsAuthenticator } from "./ws-authenticator.js";
+import {
+  isAuthMessage,
+  isAuthResponseMessage,
+  isPairingMessage,
+  getMessageType,
+} from "./message-guards.js";
 import type { ClientMessage } from "@float-code/shared/protocol";
 import type { SessionManager } from "../session/session-manager.js";
 import { logger } from "../utils/logger.js";
 
 const log = logger.child({ name: "gateway" });
 
-type MessageType = ClientMessage["type"];
-type MessageHandlers = {
-  [K in MessageType]: (
+type AuthenticatedMessageType = Exclude<
+  ClientMessage["type"],
+  "auth" | "auth.response" | "pairing"
+>;
+type AuthenticatedHandlers = {
+  [K in AuthenticatedMessageType]: (
     ws: WSContext,
     data: Extract<ClientMessage, { type: K }>,
     connId?: string,
@@ -18,9 +27,8 @@ type MessageHandlers = {
 
 export class WsGateway {
   private readonly authenticator = new WsAuthenticator();
-  // 接続ごとの短い識別子（デバッグトレース用）
   private connIds = new Map<WSContext, string>();
-  private readonly handlers: MessageHandlers;
+  private readonly handlers: AuthenticatedHandlers;
 
   constructor(
     private readonly sessionManager: SessionManager,
@@ -41,9 +49,9 @@ export class WsGateway {
   }
 
   handleMessage(ws: WSContext, raw: string): void {
-    let data: ClientMessage;
+    let data: unknown;
     try {
-      data = JSON.parse(raw) as ClientMessage;
+      data = JSON.parse(raw);
     } catch {
       log.warn(
         { connId: this.connIds.get(ws), rawPreview: raw.slice(0, 200) },
@@ -53,17 +61,34 @@ export class WsGateway {
     }
 
     if (this.authenticator.isPending(ws)) {
-      if (data.type === "auth") {
-        this.handleAuth(ws, data.token);
-      } else {
-        log.debug(
-          { connId: this.connIds.get(ws), type: data.type },
-          "WebSocket message ignored (pre-auth)",
-        );
-        this.registry.sendTo(ws, "auth.error", {
-          message: "Authentication required",
-        });
+      const connId = this.connIds.get(ws);
+
+      if (isAuthMessage(data)) {
+        void this.handleAuth(ws, data).catch(() => this.safeClose(ws));
+        return;
       }
+
+      if (isAuthResponseMessage(data)) {
+        void this.handleAuthResponse(ws, data).catch(() => this.safeClose(ws));
+        return;
+      }
+
+      if (isPairingMessage(data)) {
+        void this.authenticator
+          .handlePairing(ws, data.publicKey, data.authToken, connId)
+          .catch(() => this.safeClose(ws));
+        return;
+      }
+
+      const type = getMessageType(data);
+      log.debug(
+        { connId, type },
+        "WebSocket message ignored (pre-auth: invalid payload)",
+      );
+      this.registry.sendTo(ws, "auth.error", {
+        code: "AUTH_TOKEN_INVALID",
+        message: "Invalid auth payload",
+      });
       return;
     }
 
@@ -75,27 +100,44 @@ export class WsGateway {
       return;
     }
 
-    this.handleAuthenticatedMessage(ws, data);
+    this.handleAuthenticatedMessage(ws, data as ClientMessage);
   }
 
   handleClose(ws: WSContext, code?: number, reason?: string): void {
     const id = this.connIds.get(ws);
     log.info({ connId: id, code, reason }, "WebSocket disconnected");
-    this.authenticator.clearAuthTimeout(ws);
     this.authenticator.removeConnection(ws);
     this.connIds.delete(ws);
     this.registry.remove(ws);
   }
 
-  private handleAuth(ws: WSContext, token: string): void {
-    const id = this.connIds.get(ws);
+  private async handleAuth(
+    ws: WSContext,
+    data: Extract<ClientMessage, { type: "auth" }>,
+  ): Promise<void> {
+    const connId = this.connIds.get(ws);
+    await this.authenticator.handleAuth(
+      ws,
+      data.publicKey,
+      data.authToken,
+      connId,
+    );
+  }
 
-    if (!this.authenticator.authenticate(ws, token, id)) {
-      return;
-    }
+  private async handleAuthResponse(
+    ws: WSContext,
+    data: Extract<ClientMessage, { type: "auth.response" }>,
+  ): Promise<void> {
+    const connId = this.connIds.get(ws);
+    const authenticated = await this.authenticator.handleResponse(
+      ws,
+      data.signature,
+      connId,
+    );
+
+    if (!authenticated) return;
 
     this.registry.add(ws);
-
     const activeSession = this.sessionManager.getSnapshot();
     this.registry.sendTo(ws, "auth.ok", {
       ...(activeSession && { activeSession }),
@@ -126,16 +168,22 @@ export class WsGateway {
         this.handlers.ping(ws, data, connId);
         break;
       case "auth":
-        log.debug({ connId }, "auth ignored in authenticated phase");
+      case "auth.response":
+      case "pairing":
+        log.debug({ connId }, `${data.type} ignored in authenticated phase`);
         break;
     }
   }
 
-  /**
-   * メッセージタイプ → ハンドラの対応を構築する。
-   * 各ハンドラ引数は type に応じて型が絞られる。
-   */
-  private buildHandlers(): MessageHandlers {
+  private safeClose(ws: WSContext): void {
+    try {
+      ws.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  private buildHandlers(): AuthenticatedHandlers {
     return {
       "session.open": (ws, msg, connId) => {
         const hasSessionId = typeof msg.sessionId === "string";
@@ -199,9 +247,6 @@ export class WsGateway {
           code: "INTERNAL_ERROR",
           message: "Not implemented: permission.respond",
         });
-      },
-      auth: () => {
-        // 認証済みフェーズでは handleAuthenticatedMessage から呼ばれない
       },
     };
   }

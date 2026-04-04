@@ -21,6 +21,8 @@
     "@float-code/shared": "workspace:*",
     "@hono/node-server": "^1.14.1",
     "@hono/node-ws": "^1.1.1",
+    "@noble/ed25519": "^3.0.1",
+    "@noble/hashes": "^2.0.1",
     "@palon7/cc-client": "^0.1.0",
     "hono": "^4.8.3",
     "ws": "^8.18.2"

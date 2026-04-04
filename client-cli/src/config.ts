@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 
 const DEFAULT_HOST = "localhost:8080";
 
@@ -10,11 +11,10 @@ export type CliConfig = {
 };
 
 function normalizeHost(raw: string): string {
-  // Strip protocol prefixes if accidentally provided
   return raw
     .replace(/^wss?:\/\//, "")
     .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, ""); // strip path like /ws
+    .replace(/\/.*$/, "");
 }
 
 export function parseConfig(args: string[]): CliConfig {
@@ -44,9 +44,12 @@ export function parseConfig(args: string[]): CliConfig {
 
 function readServerToken(): string {
   try {
-    const configPath = path.resolve(
-      import.meta.dirname,
-      "../../server/data/config.json",
+    const configPath = path.join(
+      os.homedir(),
+      ".config",
+      "float-code",
+      "server",
+      "config.json",
     );
     const raw = fs.readFileSync(configPath, "utf-8");
     const config = JSON.parse(raw) as { authToken?: string };

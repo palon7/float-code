@@ -186,6 +186,8 @@ export function reduceMessage(
       };
 
     case "auth.error":
+    case "auth.challenge":
+    case "pairing.pending":
     case "pong":
       return null;
   }
