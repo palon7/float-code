@@ -7,7 +7,9 @@
 - The new server is implemented under `server/` and communicates with the G2 frontend via WebSocket
 - Uses `@palon7/cc-client` to control Claude CLI
 - Server is intended for LAN/remote access
-- Authentication uses a "shared token" for now
+- Authentication uses Ed25519 public key challenge-response + shared authToken
+- Device pairing via human-verifiable pairing codes, managed through a localhost management server and CLI
+- Supports three network modes: `local` (loopback), `tailscale` (WireGuard), `lan` (plaintext)
 - Supports multiple simultaneous client connections (CLI + G2, etc.)
 - The server manages at most one active session and automatically delivers it to all authenticated clients
 - There is no subscription concept. Connecting and authenticating is all that's needed to receive session state
@@ -15,14 +17,11 @@
 - `Always Allow` rules are persisted independently
 - Rule scope is per workspace
 - History and resume use Claude Code's built-in session features as-is
-- In the future, wss/https + public key authentication will be introduced (design room only for now)
-  - OpenClaw will be a useful reference when implementing this: tailscale serve-based remote HTTPS, client-level pairing in public key authentication, etc.
+- All data files stored in `~/.config/float-code/server/` (XDG-compliant) with restricted permissions
 - Workspace listing and browsing is provided via REST API (the server holds no "current Workspace" state)
 
 ### Non-goals (for v1)
 
-- Pairing UI
-- Public key authentication implementation
 - Distinguishing operation permissions between multiple simultaneous clients
 - Distributed storage support for rule synchronization
 - Allowed directory restriction for filesystem browser (future work)
@@ -53,16 +52,24 @@
 ## 4. High-level Architecture
 
 ```text
-[G2 Web App / WebUI]
+[G2 Web App / WebUI / CLI Client]
     |
-  WebSocket / REST API (auth token)
+  WebSocket / REST API (authToken + Ed25519 challenge-response)
     |
-[Public Server (0.0.0.0:port)]
+[Public Server (bind based on networkMode)]
     |
     +---- [Ws Gateway]
-    |         +---- auth + multi-client broadcast
+    |         +---- challenge-response auth + multi-client broadcast
+    |         +---- message-guards (input validation)
+    |         +---- ws-authenticator (auth state machine)
     |
     +---- [REST API (/api/*)]
+    |
+    +---- [Auth]
+    |         +---- shared-token (authToken verification)
+    |         +---- challenge (Ed25519 challenge/verify)
+    |         +---- approved-keys (approved key store)
+    |         +---- pairing (pending pairing management)
     |
     +---- [Workspace Store]
     |         +---- recent workspaces (JSON)
@@ -77,10 +84,10 @@
                    |
                    +---- [Workspace-scoped Rule Store (JSON)]
 
-[MCP Server (127.0.0.1:mcpPort)]  <- loopback only, same process  (Planned for Phase 4)
+[Localhost Management Server (127.0.0.1:localPort)]
     |
-    +---- [Permission MCP Tool (--permission-prompt-tool)]
-              +---- shares Permission Engine / WS state in-process
+    +---- [Pairing endpoints] (list/approve/revoke)
+    +---- [Permission MCP Tool]  (Planned for Phase 4)
 ```
 
 ## 5. Suggested directory layout
@@ -96,11 +103,19 @@ server/
   package.json
   tsconfig.json
   src/
-    index.ts                   # Entry point (startup / shutdown)
-    app.ts                     # Hono app assembly
-    config.ts                  # Server configuration loading
+    index.ts                   # Entry point (startup / shutdown / CLI dispatch)
+    app.ts                     # Hono app assembly (public server)
+    config.ts                  # Server configuration loading (v2)
+    local-server.ts            # Localhost management server (pairing endpoints)
     auth/
-      shared-token.ts          # Token authentication
+      shared-token.ts          # authToken verification (timing-safe)
+      challenge.ts             # Ed25519 challenge generation and signature verification
+      approved-keys.ts         # Approved key store (CRUD)
+      pairing.ts               # Pairing flow logic, pending storage
+      pairing-code.ts          # SHA-256 -> Base32 pairing code derivation
+    cli/
+      index.ts                 # CLI subcommand dispatcher
+      pairing.ts               # `pairing list/approve/revoke` commands
     api/
       auth-middleware.ts       # REST API authentication middleware
       error-response.ts        # REST API error response helper
@@ -108,10 +123,12 @@ server/
       sessions.ts              # GET /api/sessions, GET /api/sessions/:id
     ws/
       gateway.ts               # Auth flow / message routing
+      ws-authenticator.ts      # Challenge-response authentication state machine
+      message-guards.ts        # Runtime type guards for pre-auth messages
       connection-registry.ts   # Multi-client connection management + broadcast
       heartbeat.ts             # Connection liveness monitoring via wss.clients
     workspace/
-      workspace-store.ts       # Read/write data/workspaces.json (recent list)
+      workspace-store.ts       # Read/write workspaces.json (recent list)
       browse.ts                # Filesystem browsing
       detail.ts                # Workspace detail retrieval
       errors.ts                # Workspace-related error definitions
@@ -121,18 +138,22 @@ server/
       pid-tracker.ts           # Claude CLI PID tracking / leak prevention
     permission/                # Planned for Phase 4
     utils/
-      fs.ts                    # Atomic writes / JSON reading
+      fs.ts                    # Atomic writes (writeJsonAtomic, writeSecretJsonAtomic), dataPath
       logger.ts                # pino-based logger
-  data/
-    config.json                # Server configuration (auth token, port, etc.)
-    claude-pids.json           # Leak prevention: tracks running Claude CLI PIDs
-    workspaces.json            # Recently used workspace list
+
+~/.config/float-code/server/     # XDG-compliant data directory
+    config.json                  # Server configuration (v2: authToken, localAuthToken, networkMode, etc.)
+    approved-keys.json           # Approved public key registry
+    pending-pairings.json        # Pending pairing requests
+    workspaces.json              # Recently used workspace list
+    claude-pids.json             # Leak prevention: tracks running Claude CLI PIDs
 ```
 
 ## Related docs
 
 - [Protocol](protocol.md) - REST API + WebSocket protocol
+- [Pairing](pairing.md) - Ed25519 public key authentication, device pairing, management server
 - [Session](session.md) - Session management, two-layer resolution, resume
-- [Operations](operations.md) - Authentication, persistence, test plan
+- [Operations](operations.md) - Persistence, test plan
 - [Permission](../todo/permission.md) - Permission model (Phase 4, not yet implemented)
 - [Roadmap](../todo/roadmap.md) - Overview of unimplemented phases

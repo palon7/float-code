@@ -13,6 +13,7 @@ beforeEach(async () => {
     return {
       ...actual,
       dataPath: (filename: string) => path.join(tmpDir, filename),
+      configDir: () => tmpDir,
     };
   });
 });
@@ -29,7 +30,11 @@ describe("loadConfig", () => {
 
     expect(config.authToken).toBeTruthy();
     expect(config.authToken.length).toBe(64); // 32 bytes hex
+    expect(config.localAuthToken).toBeTruthy();
+    expect(config.localAuthToken.length).toBe(64);
     expect(config.port).toBe(8080);
+    expect(config.localPort).toBe(9090);
+    expect(config.networkMode).toBe("local");
     expect(config.claude).toEqual({
       permissionMode: "acceptEdits",
       mcpConfig: {},
@@ -43,20 +48,13 @@ describe("loadConfig", () => {
       await fs.readFile(path.join(tmpDir, "config.json"), "utf-8"),
     );
     expect(saved.authToken).toBe(config.authToken);
-    expect(saved.claude).toEqual({
-      permissionMode: "acceptEdits",
-      mcpConfig: {},
-      allowedTools: [],
-      disallowedTools: [],
-      env: {},
-      extraArgs: [],
-    });
+    expect(saved.localAuthToken).toBe(config.localAuthToken);
   });
 
   it("既存のconfig を読み込みつつ不足項目を補完する", async () => {
     await fs.writeFile(
       path.join(tmpDir, "config.json"),
-      JSON.stringify({ version: 1, port: 9090, authToken: "my-token" }),
+      JSON.stringify({ version: 2, port: 9090, authToken: "my-token" }),
     );
 
     const { loadConfig } = await import("./config.js");
@@ -64,19 +62,9 @@ describe("loadConfig", () => {
 
     expect(config.port).toBe(9090);
     expect(config.authToken).toBe("my-token");
+    // localAuthToken は自動生成される
+    expect(config.localAuthToken).toBeTruthy();
     expect(config.claude).toEqual({
-      permissionMode: "acceptEdits",
-      mcpConfig: {},
-      allowedTools: [],
-      disallowedTools: [],
-      env: {},
-      extraArgs: [],
-    });
-
-    const saved = JSON.parse(
-      await fs.readFile(path.join(tmpDir, "config.json"), "utf-8"),
-    );
-    expect(saved.claude).toEqual({
       permissionMode: "acceptEdits",
       mcpConfig: {},
       allowedTools: [],
@@ -90,9 +78,12 @@ describe("loadConfig", () => {
     await fs.writeFile(
       path.join(tmpDir, "config.json"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         port: 3001,
         authToken: "my-token",
+        localAuthToken: "local-token",
+        localPort: 9091,
+        networkMode: "lan",
         claude: {
           model: "claude-sonnet-4-6",
           appendSystemPrompt: "Follow repo conventions.",
@@ -117,6 +108,8 @@ describe("loadConfig", () => {
     const config = await loadConfig();
 
     expect(config.port).toBe(3001);
+    expect(config.localPort).toBe(9091);
+    expect(config.networkMode).toBe("lan");
     expect(config.claude).toEqual({
       model: "claude-sonnet-4-6",
       appendSystemPrompt: "Follow repo conventions.",
@@ -140,7 +133,7 @@ describe("loadConfig", () => {
     await fs.writeFile(
       path.join(tmpDir, "config.json"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         port: 70000,
         authToken: "my-token",
       }),

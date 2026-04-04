@@ -9,6 +9,7 @@ import { WsClient } from "../client/ws";
 import { HttpClient } from "../client/http";
 import { useAppStore } from "./app-store";
 import { deriveUrls } from "../constants";
+import { loadOrCreateKeypair, type Keypair } from "../auth/keypair";
 
 export interface AppRuntimeHandle {
   runtime: G2Runtime;
@@ -16,17 +17,28 @@ export interface AppRuntimeHandle {
   httpClient: HttpClient;
 }
 
-export function createAppRuntime(
+// キーペアはアプリ起動時に1回だけ生成/読み込み
+let keypairPromise: Promise<Keypair> | null = null;
+
+function getKeypair(): Promise<Keypair> {
+  if (!keypairPromise) {
+    keypairPromise = loadOrCreateKeypair();
+  }
+  return keypairPromise;
+}
+
+export async function createAppRuntime(
   bridge: EvenAppBridge,
   displayManager: G2DisplayManager,
   onDebugLog?: (message: string) => void,
-): AppRuntimeHandle {
+): Promise<AppRuntimeHandle> {
   const { serverHost: host, serverToken: token } = useAppStore.getState();
+  const keypair = await getKeypair();
 
   const hasConfig = Boolean(host && token);
   const urls = hasConfig ? deriveUrls(host) : { httpUrl: "", wsUrl: "" };
 
-  const wsClient = new WsClient(urls.wsUrl, token);
+  const wsClient = new WsClient(urls.wsUrl, token, keypair);
   const httpClient = new HttpClient(urls.httpUrl, token);
 
   const initialState = hasConfig

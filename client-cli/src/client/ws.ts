@@ -1,12 +1,15 @@
 import WebSocket from "ws";
-import type { ServerMessage } from "@float-code/shared/protocol";
+import type { ServerMessage, AuthChallenge } from "@float-code/shared/protocol";
 import { WsCloseCode } from "@float-code/shared/protocol";
+import { derivePairingCode } from "@float-code/shared/crypto/pairing-code";
+import { signChallenge, type Keypair } from "../auth/keypair.js";
 
 export type ConnectionStatus =
   | { state: "disconnected" }
   | { state: "connecting" }
   | { state: "authenticating" }
   | { state: "connected" }
+  | { state: "pairing"; code: string }
   | { state: "reconnecting"; attempt: number; nextRetryMs: number }
   | { state: "error"; reason: string };
 
@@ -17,6 +20,7 @@ export const MAX_RETRIES = 5;
 const NON_RETRYABLE_CODES = new Set<number>([
   WsCloseCode.AUTH_FAILED.code,
   WsCloseCode.AUTH_TIMEOUT.code,
+  WsCloseCode.KEY_NOT_APPROVED.code,
 ]);
 
 function getRetryDelay(attempt: number): number {
@@ -35,7 +39,8 @@ export class WsClient {
 
   constructor(
     private wsUrl: string,
-    private token: string,
+    private authToken: string,
+    private keypair: Keypair,
   ) {}
 
   connect(): void {
@@ -105,7 +110,8 @@ export class WsClient {
       ws.send(
         JSON.stringify({
           type: "auth",
-          token: this.token,
+          publicKey: this.keypair.publicKey,
+          authToken: this.authToken,
           timestamp: new Date().toISOString(),
         }),
       );
@@ -116,10 +122,20 @@ export class WsClient {
       try {
         const msg = JSON.parse(String(data)) as ServerMessage;
 
+        if (msg.type === "auth.challenge") {
+          void this.handleChallenge(ws, epoch, msg.challenge);
+          return;
+        }
+
         if (msg.type === "auth.ok") {
           this.retryCount = 0;
           this.setStatus({ state: "connected" });
         } else if (msg.type === "auth.error") {
+          if (msg.code === "KEY_NOT_APPROVED") {
+            const code = derivePairingCode(this.keypair.publicKey);
+            this.setStatus({ state: "pairing", code });
+            return;
+          }
           this.setStatus({
             state: "error",
             reason: msg.message ?? "auth failed",
@@ -141,6 +157,16 @@ export class WsClient {
       this.ws = null;
 
       if (this.intentionalClose) return;
+      if (this.status.state === "pairing") return;
+
+      // auth.error が届く前に close だけ観測されるケースのフォールバック
+      if (code === WsCloseCode.KEY_NOT_APPROVED.code) {
+        this.setStatus({
+          state: "pairing",
+          code: derivePairingCode(this.keypair.publicKey),
+        });
+        return;
+      }
 
       if (NON_RETRYABLE_CODES.has(code)) {
         if (this.status.state !== "error") {
@@ -154,8 +180,32 @@ export class WsClient {
 
     ws.on("error", () => {
       if (epoch !== this.socketEpoch) return;
-      // close event follows, reconnect is handled there
     });
+  }
+
+  private async handleChallenge(
+    ws: WebSocket,
+    epoch: number,
+    challenge: AuthChallenge,
+  ): Promise<void> {
+    try {
+      const challengeJson = JSON.stringify(challenge);
+      const signature = await signChallenge(
+        this.keypair.privateKey,
+        challengeJson,
+      );
+      if (epoch !== this.socketEpoch) return;
+      ws.send(
+        JSON.stringify({
+          type: "auth.response",
+          signature,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      this.setStatus({ state: "error", reason: "failed to sign challenge" });
+      ws.close();
+    }
   }
 
   private scheduleReconnect(): void {

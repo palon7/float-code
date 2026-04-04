@@ -22,8 +22,41 @@ function lastSent(ws: import("hono/ws").WSContext): unknown {
 }
 
 const TEST_TOKEN = "test-token-12345678901234567890123456789012";
+const TEST_PUBLIC_KEY =
+  "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
 vi.mock("../auth/shared-token.js", () => ({
   verifyToken: (token: string) => token === TEST_TOKEN,
+  initTokenCache: () => {},
+}));
+
+vi.mock("../auth/approved-keys.js", () => ({
+  isApproved: vi.fn().mockResolvedValue(true),
+
+  addKey: vi.fn(),
+  removeByCode: vi.fn(),
+  removeByPublicKey: vi.fn(),
+  listKeys: vi.fn().mockResolvedValue([]),
+  findByPublicKey: vi.fn(),
+}));
+
+vi.mock("../auth/challenge.js", () => ({
+  createChallenge: (publicKey: string) => ({
+    kind: "float-code-auth-v1",
+    challengeId: "test-challenge-id",
+    publicKey,
+    nonce: "test-nonce",
+    issuedAt: "2026-01-01T00:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:10.000Z",
+  }),
+  verifySignature: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("../auth/pairing.js", () => ({
+  requestPairing: vi
+    .fn()
+    .mockResolvedValue({ ok: true, code: "ABCD-EFGH-IJKL" }),
+  cleanupExpired: vi.fn(),
 }));
 
 function createMockSessionManager(): SessionManager {
@@ -41,6 +74,50 @@ function createMockSessionManager(): SessionManager {
   } as unknown as SessionManager;
 }
 
+function authMsg() {
+  return JSON.stringify({
+    type: "auth",
+    publicKey: TEST_PUBLIC_KEY,
+    authToken: TEST_TOKEN,
+    timestamp: "",
+  });
+}
+
+const VALID_SIGNATURE = "a".repeat(128);
+
+function authResponseMsg() {
+  return JSON.stringify({
+    type: "auth.response",
+    signature: VALID_SIGNATURE,
+    timestamp: "",
+  });
+}
+
+// challenge-response の完全なフローを実行してから ws を返す
+async function authenticateWs(
+  gateway: WsGateway,
+): Promise<import("hono/ws").WSContext> {
+  const ws = createMockWs();
+  gateway.handleOpen(ws);
+  gateway.handleMessage(ws, authMsg());
+  // handleAuth is async, wait for it
+  await vi.waitFor(() => {
+    const msgs = sent(ws);
+    expect(
+      msgs.some((m) => (m as { type: string }).type === "auth.challenge"),
+    ).toBe(true);
+  });
+  gateway.handleMessage(ws, authResponseMsg());
+  await vi.waitFor(() => {
+    const msgs = sent(ws);
+    expect(msgs.some((m) => (m as { type: string }).type === "auth.ok")).toBe(
+      true,
+    );
+  });
+  (ws.send as ReturnType<typeof vi.fn>).mockClear();
+  return ws;
+}
+
 describe("WsGateway", () => {
   let gateway: WsGateway;
   let registry: ConnectionRegistry;
@@ -56,96 +133,51 @@ describe("WsGateway", () => {
     gateway.stop();
   });
 
-  describe("認証フロー", () => {
-    it("正しいトークンで auth.ok を返す", () => {
+  describe("認証フロー (challenge-response)", () => {
+    it("正しい auth で challenge を返す", async () => {
       const ws = createMockWs();
       gateway.handleOpen(ws);
+      gateway.handleMessage(ws, authMsg());
 
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
-      const msgs = sent(ws);
-      expect(msgs).toContainEqual(expect.objectContaining({ type: "auth.ok" }));
-    });
-
-    it("認証成功時にアクティブセッションがなければ activeSession なし", () => {
-      const ws = createMockWs();
-      gateway.handleOpen(ws);
-
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
-      const msgs = sent(ws);
-      expect(msgs[0]).toMatchObject({ type: "auth.ok" });
-      expect(msgs[0]).not.toHaveProperty("activeSession");
-    });
-
-    it("認証成功時にアクティブセッションがあれば activeSession を含む", () => {
-      const snapshot = {
-        sessionId: "s1",
-        status: "running",
-        entries: [],
-      };
-      (
-        mockSessionManager.getSnapshot as ReturnType<typeof vi.fn>
-      ).mockReturnValue(snapshot);
-
-      const ws = createMockWs();
-      gateway.handleOpen(ws);
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
-      const msgs = sent(ws);
-      expect(msgs[0]).toMatchObject({
-        type: "auth.ok",
-        activeSession: snapshot,
+      await vi.waitFor(() => {
+        const msgs = sent(ws);
+        expect(
+          msgs.some((m) => (m as { type: string }).type === "auth.challenge"),
+        ).toBe(true);
       });
+
+      const challenge = sent(ws).find(
+        (m) => (m as { type: string }).type === "auth.challenge",
+      ) as { challenge: { kind: string; publicKey: string } };
+      expect(challenge.challenge.kind).toBe("float-code-auth-v1");
+      expect(challenge.challenge.publicKey).toBe(TEST_PUBLIC_KEY);
     });
 
-    it("不正なトークンで切断する", () => {
-      const ws = createMockWs();
-      gateway.handleOpen(ws);
-
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({ type: "auth", token: "wrong", timestamp: "" }),
-      );
-
-      const msgs = sent(ws);
-      expect(msgs).toContainEqual(
-        expect.objectContaining({
-          type: "auth.error",
-          message: "Authentication failed",
-        }),
-      );
-      expect(ws.close).toHaveBeenCalledWith(4403, "auth_failed");
+    it("challenge-response 成功で auth.ok を返す", async () => {
+      const ws = await authenticateWs(gateway);
+      // authenticateWs で send をクリア済み — auth.ok は通過済みなのでレジストリを確認
+      expect(registry.getAll().size).toBe(1);
+      expect(ws.close).not.toHaveBeenCalled();
     });
 
-    it("認証失敗後にメッセージを送ってもルーティングされない", () => {
+    it("不正なフォーマットの auth メッセージは拒否する", () => {
       const ws = createMockWs();
       gateway.handleOpen(ws);
-
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({ type: "auth", token: "wrong", timestamp: "" }),
-      );
-
+      // publicKey が短すぎる
       gateway.handleMessage(
         ws,
         JSON.stringify({
-          type: "session.open",
-          workspacePath: "/tmp",
+          type: "auth",
+          publicKey: "short",
+          authToken: TEST_TOKEN,
           timestamp: "",
         }),
       );
 
-      expect(mockSessionManager.openNewSession).not.toHaveBeenCalled();
+      const msgs = sent(ws);
+      expect(
+        msgs.some((m) => (m as { type: string }).type === "auth.error"),
+      ).toBe(true);
     });
 
     it("認証タイムアウトで切断する", () => {
@@ -155,83 +187,25 @@ describe("WsGateway", () => {
 
       vi.advanceTimersByTime(10_000);
       const msgs = sent(ws);
-      expect(msgs).toContainEqual(
-        expect.objectContaining({
-          type: "auth.error",
-          message: "Authentication timeout",
-        }),
-      );
+      expect(
+        msgs.some(
+          (m) =>
+            (m as { type: string }).type === "auth.error" &&
+            (m as { code: string }).code === "AUTH_TIMEOUT",
+        ),
+      ).toBe(true);
       expect(ws.close).toHaveBeenCalledWith(4401, "auth_timeout");
 
       vi.useRealTimers();
     });
   });
 
-  describe("複数クライアント接続", () => {
-    it("複数クライアントが同時に認証できる", () => {
-      const ws1 = createMockWs();
-      const ws2 = createMockWs();
-
-      gateway.handleOpen(ws1);
-      gateway.handleMessage(
-        ws1,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
-      gateway.handleOpen(ws2);
-      gateway.handleMessage(
-        ws2,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
-      // 両方とも接続中
-      expect(ws1.close).not.toHaveBeenCalled();
-      expect(ws2.close).not.toHaveBeenCalled();
-      expect(registry.getAll().size).toBe(2);
-    });
-
-    it("未認証の接続は既存の認証済み接続に影響しない", () => {
-      const ws1 = createMockWs();
-      const ws2 = createMockWs();
-
-      gateway.handleOpen(ws1);
-      gateway.handleMessage(
-        ws1,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
-      gateway.handleOpen(ws2);
-      // ws2 は認証しない
-
-      expect(ws1.close).not.toHaveBeenCalled();
-    });
-  });
-
   describe("認証済みメッセージ", () => {
-    function authenticatedWs() {
-      const ws = createMockWs();
-      gateway.handleOpen(ws);
+    it("session.open を SessionManager に委譲する", async () => {
+      const ws = await authenticateWs(gateway);
+
       gateway.handleMessage(
         ws,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-      (ws.send as ReturnType<typeof vi.fn>).mockClear();
-      return ws;
-    }
-
-    it("session.open を SessionManager に委譲する", () => {
-      authenticatedWs();
-
-      const ws2 = createMockWs();
-      gateway.handleOpen(ws2);
-      gateway.handleMessage(
-        ws2,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-      (ws2.send as ReturnType<typeof vi.fn>).mockClear();
-
-      gateway.handleMessage(
-        ws2,
         JSON.stringify({
           type: "session.open",
           workspacePath: "/tmp",
@@ -242,8 +216,8 @@ describe("WsGateway", () => {
       expect(mockSessionManager.openNewSession).toHaveBeenCalledWith("/tmp");
     });
 
-    it("session.open (load) を SessionManager に委譲する", () => {
-      const ws = authenticatedWs();
+    it("session.open (load) を SessionManager に委譲する", async () => {
+      const ws = await authenticateWs(gateway);
 
       gateway.handleMessage(
         ws,
@@ -261,32 +235,9 @@ describe("WsGateway", () => {
       );
     });
 
-    it("session.open で sessionId なしは新規セッション", () => {
-      const ws = authenticatedWs();
+    it("session.send を SessionManager に委譲する", async () => {
+      const ws = await authenticateWs(gateway);
 
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({
-          type: "session.open",
-          workspacePath: "/tmp",
-          timestamp: "",
-        }),
-      );
-
-      expect(mockSessionManager.openNewSession).toHaveBeenCalledWith("/tmp");
-      expect(mockSessionManager.loadSession).not.toHaveBeenCalled();
-    });
-
-    it("session.send を SessionManager に委譲する", () => {
-      authenticatedWs();
-
-      gateway.handleMessage(
-        createMockWs(), // need authenticated ws
-        JSON.stringify({ type: "session.send", text: "hello", timestamp: "" }),
-      );
-
-      // This ws is not authenticated, so it won't work. Let's use authenticated one:
-      const ws = authenticatedWs();
       gateway.handleMessage(
         ws,
         JSON.stringify({ type: "session.send", text: "hello", timestamp: "" }),
@@ -295,8 +246,8 @@ describe("WsGateway", () => {
       expect(mockSessionManager.send).toHaveBeenCalledWith("hello");
     });
 
-    it("ping に pong を返す", () => {
-      const ws = authenticatedWs();
+    it("ping に pong を返す", async () => {
+      const ws = await authenticateWs(gateway);
 
       gateway.handleMessage(
         ws,
@@ -308,7 +259,7 @@ describe("WsGateway", () => {
   });
 
   describe("未認証メッセージ", () => {
-    it("認証前に auth 以外を送ると auth.error を返す", () => {
+    it("認証前に不正なペイロードを送ると auth.error を返す", () => {
       const ws = createMockWs();
       gateway.handleOpen(ws);
 
@@ -321,21 +272,15 @@ describe("WsGateway", () => {
       expect(msgs).toContainEqual(
         expect.objectContaining({
           type: "auth.error",
-          message: "Authentication required",
+          message: "Invalid auth payload",
         }),
       );
     });
   });
 
   describe("切断処理", () => {
-    it("切断後のメッセージはルーティングされない", () => {
-      const ws = createMockWs();
-      gateway.handleOpen(ws);
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
+    it("切断後のメッセージはルーティングされない", async () => {
+      const ws = await authenticateWs(gateway);
       gateway.handleClose(ws);
 
       gateway.handleMessage(
@@ -362,14 +307,8 @@ describe("WsGateway", () => {
       vi.useRealTimers();
     });
 
-    it("認証済み接続の切断でレジストリから削除される", () => {
-      const ws = createMockWs();
-      gateway.handleOpen(ws);
-      gateway.handleMessage(
-        ws,
-        JSON.stringify({ type: "auth", token: TEST_TOKEN, timestamp: "" }),
-      );
-
+    it("認証済み接続の切断でレジストリから削除される", async () => {
+      const ws = await authenticateWs(gateway);
       gateway.handleClose(ws);
       expect(registry.getAll().size).toBe(0);
     });

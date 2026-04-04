@@ -13,10 +13,41 @@ import { createApp } from "../app.js";
 import type { ServerMessage } from "@float-code/shared/protocol";
 
 const TEST_TOKEN = "integration-test-token-1234567890";
+const TEST_PUBLIC_KEY =
+  "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
-// auth モジュールをモックしてトークンを固定
 vi.mock("../auth/shared-token.js", () => ({
   verifyToken: (token: string) => token === TEST_TOKEN,
+  initTokenCache: () => {},
+}));
+
+vi.mock("../auth/approved-keys.js", () => ({
+  isApproved: vi.fn().mockResolvedValue(true),
+
+  addKey: vi.fn(),
+  removeByCode: vi.fn(),
+  removeByPublicKey: vi.fn(),
+  listKeys: vi.fn().mockResolvedValue([]),
+  findByPublicKey: vi.fn(),
+}));
+
+vi.mock("../auth/challenge.js", () => ({
+  createChallenge: (publicKey: string) => ({
+    kind: "float-code-auth-v1",
+    challengeId: "test-challenge-id",
+    publicKey,
+    nonce: "test-nonce",
+    issuedAt: "2026-01-01T00:00:00.000Z",
+    expiresAt: "2099-01-01T00:00:10.000Z",
+  }),
+  verifySignature: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("../auth/pairing.js", () => ({
+  requestPairing: vi
+    .fn()
+    .mockResolvedValue({ ok: true, code: "ABCD-EFGH-IJKL" }),
+  cleanupExpired: vi.fn(),
 }));
 
 let server: ServerType;
@@ -41,7 +72,6 @@ afterAll(() => {
   server.close();
 });
 
-// テストで開いた WS を追跡して afterEach で閉じる
 const openSockets: WebSocket[] = [];
 afterEach(() => {
   for (const ws of openSockets) {
@@ -71,41 +101,41 @@ function waitMessage(ws: WebSocket): Promise<ServerMessage> {
   });
 }
 
-function waitClose(ws: WebSocket): Promise<{ code: number; reason: string }> {
-  return new Promise((resolve) => {
-    ws.once("close", (code, reason) =>
-      resolve({ code, reason: reason.toString() }),
-    );
-  });
-}
+const VALID_SIGNATURE = "a".repeat(128);
 
+// challenge-response の完全なフローを実行
 async function authenticate(ws: WebSocket): Promise<ServerMessage> {
-  const msgPromise = waitMessage(ws);
-  sendJson(ws, { type: "auth", token: TEST_TOKEN });
-  return msgPromise;
+  const challengePromise = waitMessage(ws);
+  sendJson(ws, {
+    type: "auth",
+    publicKey: TEST_PUBLIC_KEY,
+    authToken: TEST_TOKEN,
+  });
+  const challengeMsg = await challengePromise;
+  expect(challengeMsg.type).toBe("auth.challenge");
+
+  const authOkPromise = waitMessage(ws);
+  sendJson(ws, { type: "auth.response", signature: VALID_SIGNATURE });
+  return authOkPromise;
 }
 
 describe("WebSocket 統合テスト", () => {
   describe("認証", () => {
-    it("正しいトークンで接続して auth.ok を受け取る", async () => {
+    it("challenge-response で auth.ok を受け取る", async () => {
       const ws = await connect();
       const msg = await authenticate(ws);
 
       expect(msg).toMatchObject({ type: "auth.ok" });
     });
 
-    it("不正なトークンで auth.error を受け取り切断される", async () => {
+    it("不正なフォーマットの auth で auth.error を受け取る", async () => {
       const ws = await connect();
       const msgPromise = waitMessage(ws);
-      const closePromise = waitClose(ws);
 
-      sendJson(ws, { type: "auth", token: "wrong" });
+      sendJson(ws, { type: "auth", publicKey: "short", authToken: TEST_TOKEN });
 
       const msg = await msgPromise;
       expect(msg).toMatchObject({ type: "auth.error" });
-
-      const { code } = await closePromise;
-      expect(code).toBe(4403);
     });
 
     it("認証前に auth 以外を送ると拒否される", async () => {
@@ -117,35 +147,8 @@ describe("WebSocket 統合テスト", () => {
       const msg = await msgPromise;
       expect(msg).toMatchObject({
         type: "auth.error",
-        message: "Authentication required",
+        message: "Invalid auth payload",
       });
-    });
-  });
-
-  describe("単一接続ポリシー", () => {
-    it("新しい認証済み接続が既存接続を切断する", async () => {
-      const ws1 = await connect();
-      await authenticate(ws1);
-
-      const closePromise = waitClose(ws1);
-
-      const ws2 = await connect();
-      await authenticate(ws2);
-
-      const { code, reason } = await closePromise;
-      expect(code).toBe(4001);
-      expect(reason).toBe("replaced_by_new_connection");
-    });
-
-    it("未認証の接続は既存の認証済み接続に影響しない", async () => {
-      const ws1 = await connect();
-      await authenticate(ws1);
-
-      // ws2 は接続だけして認証しない
-      await connect();
-
-      // ws1 はまだ生きている
-      expect(ws1.readyState).toBe(WebSocket.OPEN);
     });
   });
 

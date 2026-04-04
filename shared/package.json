@@ -11,6 +11,18 @@
     "./protocol/entry-guard": {
       "types": "./src/protocol/entry-guard.ts",
       "default": "./dist/protocol/entry-guard.js"
+    },
+    "./crypto/sign": {
+      "types": "./src/crypto/sign.ts",
+      "default": "./dist/crypto/sign.js"
+    },
+    "./crypto/ed25519-setup": {
+      "types": "./src/crypto/ed25519-setup.ts",
+      "default": "./dist/crypto/ed25519-setup.js"
+    },
+    "./crypto/pairing-code": {
+      "types": "./src/crypto/pairing-code.ts",
+      "default": "./dist/crypto/pairing-code.js"
     }
   },
   "scripts": {
@@ -23,6 +35,8 @@
     "check": "pnpm run build && pnpm run lint && pnpm run format:check"
   },
   "dependencies": {
+    "@noble/ed25519": "^3.0.1",
+    "@noble/hashes": "^2.0.1",
     "@palon7/cc-client": "^0.1.0"
   },
   "devDependencies": {

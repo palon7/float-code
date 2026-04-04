@@ -66,7 +66,11 @@ export function useAppRuntime(): void {
         appendDebugLog(`launchSource: ${source}`);
       });
 
-      const handle = createAppRuntime(bridge, displayManager, appendDebugLog);
+      const handle = await createAppRuntime(
+        bridge,
+        displayManager,
+        appendDebugLog,
+      );
       runtimeRef.current = handle;
 
       useAppStore.getState().setWsClient(handle.wsClient);

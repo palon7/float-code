@@ -2,28 +2,40 @@
 
 ## Auth and network policy
 
-### v1 auth
+### Authentication
 
-- Shared token (stored in `server/data/config.json`)
-- REST API: `Authorization: Bearer <token>` header validated by Hono middleware
-- WebSocket: all messages are rejected until the `auth` message succeeds
-- On the client side (G2 Web App), the token is entered in a text box and saved to localStorage
+- Two-factor: shared `authToken` + Ed25519 public key challenge-response
+- REST API: `Authorization: Bearer <authToken>` header (unchanged)
+- WebSocket: `auth { publicKey, authToken }` -> `auth.challenge` -> `auth.response { signature }` -> `auth.ok`
+- New devices go through a pairing flow: `pairing` -> `pairing.pending { code }` -> user approves via CLI
+- See [pairing.md](pairing.md) for full details
+
+### Network modes
+
+- `local` (default): bind to `127.0.0.1`, loopback only
+- `tailscale`: bind to `127.0.0.1`, accessed via `tailscale serve` (WireGuard encryption)
+- `lan`: bind to `0.0.0.0`, plaintext transport (warning logged on startup)
 
 ### Security defaults
 
-- Unauthenticated connections are immediately closed
+- Pre-auth messages are validated by type guards before processing (publicKey format, signature format)
+- authToken verified with `crypto.timingSafeEqual`
+- Unauthenticated connections time out after 10 seconds
+- All secret files (`config.json`, `approved-keys.json`, `pending-pairings.json`) written with `0600` permissions
 - `origin`/`host` checks can be enabled via configuration
 - Permission response timeout is delegated to the Claude CLI side (the server does not time out)
-- Do not log tokens in plaintext
+- Do not log tokens or private keys in plaintext
 
-### Future hooks
+### Management server
 
-- Mutual authentication based on public keys
-- Pairing UI
+- Separate Hono instance on `127.0.0.1:localPort` (default 9090)
+- Uses a separate `localAuthToken` for authentication
+- Provides pairing management endpoints (list/approve/revoke)
+- CLI subcommands available: `float-server pairing list/approve/revoke`
 
 ## File Persistence Strategy
 
-JSON files under `data/` (`config.json`, `workspaces.json`, `claude-pids.json`) use atomic writes to prevent corruption on crash.
+JSON files under `~/.config/float-code/server/` use atomic writes to prevent corruption on crash. Files containing secrets additionally use `writeSecretJsonAtomic` which enforces `0600` file permissions and `0700` directory permissions.
 
 ### Method: tmp + fsync + rename
 
@@ -54,7 +66,7 @@ async function writeJsonAtomic(path: string, data: unknown): Promise<void> {
 
 ### Applicable targets
 
-Use this utility for all writes to `data/*.json` files. Normal `fs.readFile` is sufficient for reads.
+Use `writeJsonAtomic` for non-secret files and `writeSecretJsonAtomic` for files containing tokens or keys. Normal `fs.readFile` is sufficient for reads.
 
 ## Test plan
 

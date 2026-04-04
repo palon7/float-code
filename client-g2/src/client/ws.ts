@@ -1,10 +1,14 @@
-import type { ServerMessage } from "@float-code/shared/protocol";
+import type { ServerMessage, AuthChallenge } from "@float-code/shared/protocol";
+import { WsCloseCode } from "@float-code/shared/protocol";
+import { derivePairingCode } from "@float-code/shared/crypto/pairing-code";
+import { signChallenge, type Keypair } from "../auth/keypair.js";
 
 export type ConnectionStatus =
   | { state: "disconnected" }
   | { state: "connecting" }
   | { state: "authenticating" }
   | { state: "connected" }
+  | { state: "pairing"; code: string }
   | { state: "error"; reason: string };
 
 type StatusListener = (status: ConnectionStatus) => void;
@@ -20,12 +24,14 @@ export class WsClient {
 
   constructor(
     private wsUrl: string,
-    private token: string,
+    private authToken: string,
+    private keypair: Keypair,
   ) {}
 
-  updateConfig(wsUrl: string, token: string): void {
+  updateConfig(wsUrl: string, authToken: string, keypair: Keypair): void {
     this.wsUrl = wsUrl;
-    this.token = token;
+    this.authToken = authToken;
+    this.keypair = keypair;
   }
 
   connect(): void {
@@ -99,7 +105,8 @@ export class WsClient {
       ws.send(
         JSON.stringify({
           type: "auth",
-          token: this.token,
+          publicKey: this.keypair.publicKey,
+          authToken: this.authToken,
           timestamp: new Date().toISOString(),
         }),
       );
@@ -110,9 +117,19 @@ export class WsClient {
       try {
         const msg = JSON.parse(String(event.data)) as ServerMessage;
 
+        if (msg.type === "auth.challenge") {
+          void this.handleChallenge(ws, epoch, msg.challenge);
+          return;
+        }
+
         if (msg.type === "auth.ok") {
           this.setStatus({ state: "connected" });
         } else if (msg.type === "auth.error") {
+          if (msg.code === "KEY_NOT_APPROVED") {
+            const code = derivePairingCode(this.keypair.publicKey);
+            this.setStatus({ state: "pairing", code });
+            return;
+          }
           this.setStatus({
             state: "error",
             reason: msg.message ?? "auth failed",
@@ -133,6 +150,15 @@ export class WsClient {
       this.ws = null;
 
       if (this.intentionalClose) return;
+      if (this.status.state === "pairing") return;
+
+      if (event.code === WsCloseCode.KEY_NOT_APPROVED.code) {
+        this.setStatus({
+          state: "pairing",
+          code: derivePairingCode(this.keypair.publicKey),
+        });
+        return;
+      }
 
       if (this.status.state !== "error") {
         const reason = event.reason || `disconnected (code: ${event.code})`;
@@ -146,6 +172,31 @@ export class WsClient {
         this.setStatus({ state: "error", reason: "connection failed" });
       }
     };
+  }
+
+  private async handleChallenge(
+    ws: WebSocket,
+    epoch: number,
+    challenge: AuthChallenge,
+  ): Promise<void> {
+    try {
+      const challengeJson = JSON.stringify(challenge);
+      const signature = await signChallenge(
+        this.keypair.privateKey,
+        challengeJson,
+      );
+      if (epoch !== this.socketEpoch) return;
+      ws.send(
+        JSON.stringify({
+          type: "auth.response",
+          signature,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      this.setStatus({ state: "error", reason: "failed to sign challenge" });
+      ws.close();
+    }
   }
 
   private sendMessage(payload: Record<string, unknown>): boolean {

@@ -1,12 +1,14 @@
 import type { ServerMessage } from "@float-code/shared/protocol";
 import type { G2Context } from "../../runtime/g2-context";
 import type { G2State } from "../../runtime/g2-state";
+import type { ConnectionStatus } from "../../../client/ws";
 import { useAppStore } from "../../../app/app-store";
 import { deriveUrls } from "../../../constants";
 import { buildConnectingPage } from "./view";
 import { createErrorState } from "../error/state";
 import { createMainState } from "../main/state";
 import { createWorkspaceSelectState } from "../workspace-select/state";
+import { loadOrCreateKeypair } from "../../../auth/keypair";
 
 const CONNECT_TIMEOUT_MS = 15_000;
 
@@ -33,6 +35,19 @@ export function createConnectingState(): G2State {
     }
   }
 
+  function handleWsStatus(ctx: G2Context, status: ConnectionStatus): void {
+    if (status.state === "error") {
+      handleWs(ctx, status.reason);
+    } else if (status.state === "pairing") {
+      transitioning = true;
+      ctx.transition(
+        createErrorState(
+          `Pairing: ${status.code}\nApprove on server to connect`,
+        ),
+      );
+    }
+  }
+
   return {
     id: "connecting",
 
@@ -48,7 +63,8 @@ export function createConnectingState(): G2State {
       }
 
       const urls = deriveUrls(serverHost);
-      ctx.wsClient.updateConfig(urls.wsUrl, serverToken);
+      const keypair = await loadOrCreateKeypair();
+      ctx.wsClient.updateConfig(urls.wsUrl, serverToken, keypair);
       ctx.httpClient.updateConfig(urls.httpUrl, serverToken);
 
       timeoutTimer = setTimeout(() => {
@@ -63,8 +79,7 @@ export function createConnectingState(): G2State {
 
     handle(ctx, event) {
       if (transitioning) return;
-      if (event.kind === "ws" && event.status.state === "error")
-        handleWs(ctx, event.status.reason);
+      if (event.kind === "ws") handleWsStatus(ctx, event.status);
       else if (event.kind === "cc") handleCc(ctx, event.message);
     },
 
