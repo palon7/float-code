@@ -33,11 +33,14 @@ export async function writeSecretJsonAtomic(
   try {
     await fd.writeFile(JSON.stringify(data, null, 2), "utf8");
     await fd.sync();
-  } finally {
     await fd.close();
+    await fs.rename(tmp, filePath);
+    await fs.chmod(filePath, 0o600);
+  } catch (e) {
+    await fd.close().catch(() => {});
+    await fs.unlink(tmp).catch(() => {});
+    throw e;
   }
-  await fs.rename(tmp, filePath);
-  await fs.chmod(filePath, 0o600);
 }
 
 export async function readJsonSafe<T>(
