@@ -1,5 +1,6 @@
 import type { ServerMessage } from "@float-code/shared/protocol";
-import type { ConnectionStatus } from "../../client/ws";
+import type { ConnectionStatus, WsClient } from "../../client/ws";
+import type { HttpClient } from "../../client/http";
 import { useAppStore } from "../../app/app-store";
 import { useSessionStore } from "../../client/session-store";
 import { deriveUrls } from "../../constants";
@@ -24,14 +25,8 @@ type LifecycleKey = (typeof LIFECYCLE_KEYS)[keyof typeof LIFECYCLE_KEYS];
 export interface LifecycleHost {
   transition: (next: G2State) => Promise<void>;
   getCurrentStateId: () => string | undefined;
-  wsClient: {
-    updateConfig: (wsUrl: string, authToken: string) => void;
-    connect: () => void;
-    disconnect: () => void;
-  };
-  httpClient: {
-    updateConfig: (httpUrl: string, authToken: string) => void;
-  };
+  wsClient: WsClient;
+  httpClient: HttpClient;
 }
 
 export class ConnectionLifecycle {
