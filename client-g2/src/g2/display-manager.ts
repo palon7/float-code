@@ -18,8 +18,7 @@ export class G2DisplayManager {
   private pageSeq = 0;
   private displayEpoch = 0;
   private updateState = new Map<string, { desired: string | null }>();
-  private lastRebuildAt = 0;
-  private inflightUpgrades = new Set<Promise<unknown>>();
+
   onDrainIdle: (() => void) | null = null;
   onDebugLog: ((message: string) => void) | null = null;
 
@@ -61,7 +60,6 @@ export class G2DisplayManager {
     }
     allContainers[allContainers.length - 1].isEventCapture = 1;
 
-    await this.waitInflightUpgrades();
     await this.rebuild(page, seq);
     this.containerIdMap = nextMap;
     this.onDebugLog?.(`applyPage #${seq} done`);
@@ -102,7 +100,7 @@ export class G2DisplayManager {
       entry.desired = null;
       didSend = true;
 
-      const p = this.bridge.textContainerUpgrade(
+      await this.bridge.textContainerUpgrade(
         new TextContainerUpgrade({
           containerID: id,
           containerName: containerName,
@@ -111,12 +109,6 @@ export class G2DisplayManager {
           content: text,
         }),
       );
-      this.inflightUpgrades.add(p);
-      try {
-        await p;
-      } finally {
-        this.inflightUpgrades.delete(p);
-      }
     }
 
     // epoch が変わった場合は setPage 側で updateState.clear() 済みなので削除しない
@@ -128,40 +120,14 @@ export class G2DisplayManager {
     }
   }
 
-  // rebuild 前に in-flight の textContainerUpgrade を待つ（タイムアウト付き）
-  private static readonly UPGRADE_DRAIN_TIMEOUT_MS = 500;
-
-  private async waitInflightUpgrades(): Promise<void> {
-    if (this.inflightUpgrades.size === 0) return;
-    this.onDebugLog?.(
-      `waiting for ${this.inflightUpgrades.size} inflight upgrade(s)`,
-    );
-    await Promise.race([
-      Promise.allSettled(this.inflightUpgrades),
-      new Promise<void>((r) =>
-        setTimeout(r, G2DisplayManager.UPGRADE_DRAIN_TIMEOUT_MS),
-      ),
-    ]);
-  }
-
   // Flutter 側が応答しない場合にチェーンが詰まるのを防ぐタイムアウト
   private static readonly REBUILD_TIMEOUT_MS = 3000;
-  // 連続 rebuild でファームウェアが取りこぼすのを防ぐ最低インターバル
-  private static readonly MIN_REBUILD_INTERVAL_MS = 120;
 
   private async rebuild(page: G2PageDef, seq: number): Promise<void> {
     const bridge = this.bridge;
     if (!bridge) {
       this.onDebugLog?.(`rebuild #${seq} skip (no bridge)`);
       return;
-    }
-
-    const now = Date.now();
-    const elapsed = now - this.lastRebuildAt;
-    if (elapsed < G2DisplayManager.MIN_REBUILD_INTERVAL_MS) {
-      const wait = G2DisplayManager.MIN_REBUILD_INTERVAL_MS - elapsed;
-      this.onDebugLog?.(`rebuild #${seq} waiting ${wait}ms (interval guard)`);
-      await new Promise<void>((r) => setTimeout(r, wait));
     }
 
     const textObject = page.textContainers ?? [];
@@ -180,14 +146,12 @@ export class G2DisplayManager {
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        this.lastRebuildAt = Date.now();
         this.onDebugLog?.(`rebuild #${seq} timeout`);
         reject(new Error(`rebuild #${seq} timeout`));
       }, G2DisplayManager.REBUILD_TIMEOUT_MS);
 
       void bridge.rebuildPageContainer(request).then(
         (result) => {
-          this.lastRebuildAt = Date.now();
           if (settled) {
             this.onDebugLog?.(
               `rebuild #${seq} resolved after timeout: ${result}`,
@@ -200,7 +164,6 @@ export class G2DisplayManager {
           resolve();
         },
         (error) => {
-          this.lastRebuildAt = Date.now();
           clearTimeout(timer);
           if (settled) {
             this.onDebugLog?.(

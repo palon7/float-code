@@ -12,6 +12,7 @@ export function buildListeningPage(): G2PageDef {
         height: DISPLAY_HEIGHT - 160,
         borderWidth: 1,
         borderColor: 3,
+        borderRadius: 8,
         paddingLength: 4,
         containerName: "voiceText",
         content: "● Listening...",

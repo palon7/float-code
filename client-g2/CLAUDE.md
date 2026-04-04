@@ -72,7 +72,7 @@ connecting ──(auth.ok + activeSession)──> main
      +──(error)──> error              |
                      |                |
                      +───(retry)──> connecting
-                                      
+
 main ──(tap)──> menu ──> workspace-select / session-select / main
   |
   +──(swipe up)──> voice-listening ──> voice-confirm ──> main
@@ -127,9 +127,8 @@ main ──(tap)──> menu ──> workspace-select / session-select / main
 - **TextContainer character limit (physical device):** Officially character-based (`createStartUpPageContainer`/`rebuildPageContainer`: 1000 chars, `textContainerUpgrade`: 2000 chars), but on physical devices the Flutter→G2 communication imposes a UTF-8 byte limit. Japanese and Unicode symbols (●, ▶, ◌, etc.) are 3 bytes per character, so even if within the character limit, `rebuildPageContainer` is silently ignored when the byte limit is exceeded (no error is returned). Use `truncateToBytes()` to enforce byte-based limits on content. The same byte limit applies to `itemName` (keep each item under ~60 bytes to be safe).
 - **`createStartUpPageContainer` must come first:** `audioControl(true)` does not work until after the page is created. The startup sequence must be `createStartUpPageContainer` → `audioControl(true)` → WebSocket connection.
 - **ListContainer index 0 issue:** `listEvent.currentSelectItemIndex` returns `undefined` when the first item (index 0) is selected. Always use `?? 0` to set a default value. Items at index 1, 2, ... behave normally.
-- **No overlapping TextContainers (physical device):** On physical devices, placing multiple TextContainers with overlapping coordinates in `rebuildPageContainer` results in no display update (works in the simulator). This is likely a bug in Even Hub SDK 0.0.9. For overlay display, avoid overlapping TextContainers — split the layout or use `textContainerUpgrade` to replace content instead.
+- **Overlapping TextContainers:** Containers declared later draw on top of earlier ones (no z-index control). Container backgrounds are always transparent (no background color property exists), so content from lower containers shows through. The only visual decoration available is the border.
 - **`rebuildPageContainer` return value:** Always returns `false` on physical devices. Note that it also returns `false` when content exceeds the byte limit, but without updating the display.
-- **`borderRadius` is prohibited (physical device):** SDK 0.0.8+ sends `borderRadius`, but older EvenHub apps only understand the old field name `borderRdaius` (a protobuf typo). Any `rebuildPageContainer` / `createStartUpPageContainer` that includes `borderRadius` is silently ignored on physical devices. Do not use `borderRadius` until the EvenHub app is updated.
 - **Browser-side UI must follow EvenReality's design system:** Refer to `/docs/er-design-guideline.md` and always design according to the guidelines. Actively use even-toolkit components.
 
 ---

@@ -15,6 +15,7 @@ export function buildMainPage(statusText: string, logText: string): G2PageDef {
         height: STATUS_HEIGHT,
         borderWidth: 1,
         borderColor: 5,
+        borderRadius: 8,
         paddingLength: 4,
         containerName: "status",
         content: statusText,
