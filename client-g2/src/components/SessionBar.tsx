@@ -17,6 +17,14 @@ import { useWorkspaceStore } from "../client/workspace-store";
 import { formatRelativeTime } from "../client/format-utils";
 type SheetMode = "none" | "workspace" | "session" | "browse";
 
+function CenteredLoading() {
+  return (
+    <div className="flex justify-center py-8">
+      <Loading />
+    </div>
+  );
+}
+
 function WorkspaceList({
   workspaces,
   loading,
@@ -32,7 +40,7 @@ function WorkspaceList({
   onBrowse: () => void;
   onRetry: () => void;
 }) {
-  if (loading) return <Loading className="py-8" />;
+  if (loading) return <CenteredLoading />;
 
   if (error) {
     return (
@@ -84,7 +92,7 @@ function BrowseList({
   onSelect: (path: string) => void;
   onRetry: () => void;
 }) {
-  if (loading) return <Loading className="py-8" />;
+  if (loading) return <CenteredLoading />;
 
   if (error) {
     return (
@@ -145,7 +153,7 @@ function SessionList({
   onSelectExisting: (session: SessionListItem) => void;
   onRetry: () => void;
 }) {
-  if (loading) return <Loading className="py-8" />;
+  if (loading) return <CenteredLoading />;
 
   if (error) {
     return (

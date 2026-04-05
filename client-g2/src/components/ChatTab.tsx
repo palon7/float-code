@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Card, StatusDot } from "even-toolkit/web";
+import { Card, Loading, StatusDot } from "even-toolkit/web";
 import { useAppStore, type BridgeStatus } from "../app/app-store";
 import {
   formatToolName,
@@ -218,6 +218,7 @@ export function ChatTab() {
   const wasAtBottom = useRef(true);
 
   const hasActive = useSessionStore((s) => s.hasActive);
+  const showRunningSpinner = sessionStatus === "running";
 
   // spawning 中もサーバーがキューイングするので送信可能
   const canSend =
@@ -249,7 +250,7 @@ export function ChatTab() {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     });
     return () => cancelAnimationFrame(id);
-  }, [lines]);
+  }, [lines, showRunningSpinner]);
 
   return (
     <section
@@ -274,11 +275,16 @@ export function ChatTab() {
           <div className="space-y-1 px-1">
             {lines.length > 0 ? (
               lines.map((line) => <ChatEntry key={line.id} line={line} />)
-            ) : (
+            ) : !showRunningSpinner ? (
               <p className="py-8 text-center text-[13px] text-text-dim">
                 No messages yet
               </p>
-            )}
+            ) : null}
+            {showRunningSpinner ? (
+              <div className="flex justify-start py-1">
+                <Loading className="py-2" />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
