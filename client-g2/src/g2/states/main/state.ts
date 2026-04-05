@@ -213,7 +213,9 @@ export function createMainState(): G2State {
           const text = truncateForDisplay(rawLog, MAX_HISTORY_BYTES, Infinity);
           ctx.display.updateText("log", text);
         } else {
-          rebuildPage(ctx);
+          void rebuildPage(ctx).catch((error: unknown) => {
+            ctx.display.onDebugLog?.(`rebuildPage failed: ${String(error)}`);
+          });
         }
       });
       ctx.display.onDrainIdle = () => {

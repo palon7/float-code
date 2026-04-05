@@ -75,12 +75,12 @@ describe("getSimpleModeLogText", () => {
     expect(getSimpleModeLogText(lines)).toBe("hello world");
   });
 
-  it("returns empty when user_message is the latest boundary", () => {
+  it("returns a single space when user_message is the latest boundary", () => {
     const lines = [
       line({ kind: "text", text: "old answer" } as ParsedEntry),
       line({ kind: "user_message", text: "new question" } as ParsedEntry),
     ];
-    expect(getSimpleModeLogText(lines)).toBe("");
+    expect(getSimpleModeLogText(lines)).toBe(" ");
   });
 
   it("returns text after user_message", () => {

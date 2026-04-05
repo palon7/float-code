@@ -441,6 +441,13 @@ describe("SessionManager", () => {
       manager.send("q1");
       manager.send("q2");
 
+      const queuedSnapshot = manager.getSnapshot();
+      expect(
+        queuedSnapshot?.entries.map((entry) =>
+          "text" in entry ? entry.text : undefined,
+        ),
+      ).toEqual(["hello", "q1", "q2"]);
+
       currentSession().emit("entry", makeSystemEntry("queued-session"));
       expect(currentSession().send).toHaveBeenNthCalledWith(1, "q1");
       expect(currentSession().send).toHaveBeenNthCalledWith(2, "q2");
@@ -463,6 +470,25 @@ describe("SessionManager", () => {
             (m as { code: string }).code === "SESSION_SEND_QUEUE_FULL",
         ),
       ).toBeTruthy();
+
+      const queuedSnapshot = manager.getSnapshot();
+      expect(
+        queuedSnapshot?.entries
+          .filter((entry) => entry.kind === "user_message")
+          .map((entry) => entry.text),
+      ).toEqual([
+        "hello",
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+        "q5",
+        "q6",
+        "q7",
+        "q8",
+        "q9",
+        "q10",
+      ]);
 
       currentSession().emit("entry", makeSystemEntry("queued-session"));
       expect(currentSession().send).toHaveBeenCalledTimes(10);

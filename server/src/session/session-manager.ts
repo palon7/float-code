@@ -111,8 +111,6 @@ export class SessionManager {
     const live = this.requireActive();
     if (!live) return;
 
-    this.broadcastUserMessage(live, text);
-
     if (live.status === "idle") {
       if (live.meta.sessionId) {
         log.info(
@@ -127,12 +125,17 @@ export class SessionManager {
         );
         this.startNew(live, text);
       }
+      this.broadcastUserMessage(
+        this.activeSessionState.getCurrent() ?? live,
+        text,
+      );
       return;
     }
 
     if (live.status === "running" && live.session) {
       try {
         live.session.send(text);
+        this.broadcastUserMessage(live, text);
         log.info(
           { sessionId: live.meta.sessionId },
           "session.send: forwarded to stdin",
@@ -146,6 +149,10 @@ export class SessionManager {
             "session.send: auto-resume (stdin closed)",
           );
           this.startResume(live, live.meta.sessionId, text);
+          this.broadcastUserMessage(
+            this.activeSessionState.getCurrent() ?? live,
+            text,
+          );
           return;
         }
         this.registry.broadcast("session.error", {
@@ -168,6 +175,7 @@ export class SessionManager {
         });
         return;
       }
+      this.broadcastUserMessage(live, text);
       log.debug(
         { queueLength: live.sendQueue.length },
         "session.send: queued (spawning)",
