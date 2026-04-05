@@ -1,9 +1,11 @@
 import { realpath } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import {
   ClaudeCodeClient,
   getSessionDir,
   loadSession as loadSessionFromDisk,
 } from "@palon7/cc-client";
+import type { ParsedEntry } from "@palon7/cc-client";
 import type { SessionSnapshot } from "@float-code/shared/protocol";
 import type { ConnectionRegistry } from "../ws/connection-registry.js";
 import { EntryBuffer } from "./entry-buffer.js";
@@ -109,6 +111,8 @@ export class SessionManager {
     const live = this.requireActive();
     if (!live) return;
 
+    this.broadcastUserMessage(live, text);
+
     if (live.status === "idle") {
       if (live.meta.sessionId) {
         log.info(
@@ -170,6 +174,18 @@ export class SessionManager {
       );
       return;
     }
+  }
+
+  private broadcastUserMessage(live: LiveSession, text: string): void {
+    const sessionId = live.meta.sessionId ?? "";
+    const entry: ParsedEntry = {
+      kind: "user_message",
+      id: `user-${randomUUID()}`,
+      timestamp: new Date().toISOString(),
+      text,
+    };
+    live.entryBuffer.add(entry);
+    this.registry.broadcast("session.entry", { sessionId, entry });
   }
 
   interrupt(): void {

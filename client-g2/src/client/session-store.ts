@@ -8,11 +8,7 @@ import {
   type LogLine,
   type StatusInfo,
 } from "./session-format";
-import {
-  INITIAL_SESSION_STATE,
-  reduceLocalUserMessage,
-  reduceMessage,
-} from "./session-reducer";
+import { INITIAL_SESSION_STATE, reduceMessage } from "./session-reducer";
 
 interface SessionStoreState {
   lines: readonly LogLine[];
@@ -25,7 +21,6 @@ interface SessionStoreState {
   getStatusInfo: (filter?: EntryFilter) => StatusInfo;
   getLogText: (filter?: EntryFilter) => string;
   handleMessage: (msg: ServerMessage) => void;
-  addUserMessage: (text: string) => void;
   reset: () => void;
 }
 
@@ -47,10 +42,6 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   handleMessage: (msg) => {
     const next = reduceMessage(get(), msg);
     if (next) set(next);
-  },
-
-  addUserMessage: (text) => {
-    set(reduceLocalUserMessage(get(), text));
   },
 
   reset: () => set(INITIAL_SESSION_STATE),

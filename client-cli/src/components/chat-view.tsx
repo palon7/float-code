@@ -456,22 +456,6 @@ export function ChatView({
       const client = wsClientRef.current;
       if (client.getStatus().state !== "connected") return;
 
-      const userLogEntry: LogEntry = {
-        id: `user-${crypto.randomUUID()}`,
-        msg: {
-          type: "session.entry" as const,
-          sessionId: "",
-          entry: {
-            kind: "user_message" as const,
-            id: `user-${crypto.randomUUID()}`,
-            timestamp: new Date().toISOString(),
-            text: value,
-          },
-          timestamp: "",
-        },
-      };
-      setLogs((prev) => [...prev, userLogEntry].slice(-MAX_LOGS));
-
       const { hasActive, running } = sessionStateRef.current;
       if (hasActive || running) {
         client.sendText(value);
