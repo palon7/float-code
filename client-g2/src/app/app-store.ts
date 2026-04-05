@@ -6,19 +6,27 @@ import {
   API_KEY_STORAGE_KEY,
   SERVER_HOST_STORAGE_KEY,
   SERVER_TOKEN_STORAGE_KEY,
+  SHOW_THINKING_STORAGE_KEY,
+  SHOW_TOOL_USE_STORAGE_KEY,
+  SIMPLE_MODE_STORAGE_KEY,
 } from "../constants";
 
 const MAX_LOGS = 30;
 const PERSIST_DEBOUNCE_MS = 500;
 
 export type BridgeStatus = "connecting" | "connected" | "error";
-type SettingField = "serverHost" | "serverToken" | "apiKey";
+type StringSettingField = "serverHost" | "serverToken" | "apiKey";
+type BoolSettingField = "simpleModeEnabled" | "showThinking" | "showToolUse";
+export type SettingField = StringSettingField | BoolSettingField;
 
 interface AppStoreState {
   bridge: EvenAppBridge | null;
   serverHost: string;
   serverToken: string;
   apiKey: string;
+  simpleModeEnabled: boolean;
+  showThinking: boolean;
+  showToolUse: boolean;
   bridgeStatus: BridgeStatus;
   wsStatus: ConnectionStatus;
   wsClient: WsClient | null;
@@ -26,7 +34,8 @@ interface AppStoreState {
   debugLogs: string[];
   setBridge: (bridge: EvenAppBridge) => void;
   hydrateSettings: () => Promise<void>;
-  setSetting: (field: SettingField, value: string) => void;
+  setSetting(field: StringSettingField, value: string): void;
+  setSetting(field: BoolSettingField, value: boolean): void;
   appendDebugLog: (message: string) => void;
   setBridgeStatus: (status: BridgeStatus) => void;
   setWsStatus: (status: ConnectionStatus) => void;
@@ -39,6 +48,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   serverHost: "",
   serverToken: "",
   apiKey: "",
+  simpleModeEnabled: false,
+  showThinking: true,
+  showToolUse: true,
   bridgeStatus: "connecting",
   wsStatus: { state: "disconnected" },
   wsClient: null,
@@ -52,20 +64,33 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   hydrateSettings: async () => {
     const { bridge } = get();
     if (!bridge) return;
-    const [apiKey, serverHost, serverToken] = await Promise.all([
+    const [
+      apiKey,
+      serverHost,
+      serverToken,
+      simpleMode,
+      showThinking,
+      showToolUse,
+    ] = await Promise.all([
       bridge.getLocalStorage(API_KEY_STORAGE_KEY),
       bridge.getLocalStorage(SERVER_HOST_STORAGE_KEY),
       bridge.getLocalStorage(SERVER_TOKEN_STORAGE_KEY),
+      bridge.getLocalStorage(SIMPLE_MODE_STORAGE_KEY),
+      bridge.getLocalStorage(SHOW_THINKING_STORAGE_KEY),
+      bridge.getLocalStorage(SHOW_TOOL_USE_STORAGE_KEY),
     ]);
     set({
       apiKey: apiKey ?? "",
       serverHost: serverHost ?? "",
       serverToken: serverToken ?? "",
+      simpleModeEnabled: simpleMode === "true",
+      showThinking: showThinking !== "false",
+      showToolUse: showToolUse !== "false",
     });
   },
 
-  setSetting: (field, value) => {
-    set({ [field]: value } as Pick<AppStoreState, SettingField>);
+  setSetting: (field: SettingField, value: string | boolean) => {
+    set({ [field]: value } as Partial<AppStoreState>);
   },
 
   appendDebugLog: (message) => {
@@ -96,13 +121,27 @@ export function setupSettingsPersistence(): () => void {
   let dirty = false;
 
   function flush(): void {
-    const { bridge, apiKey, serverHost, serverToken } = useAppStore.getState();
+    const {
+      bridge,
+      apiKey,
+      serverHost,
+      serverToken,
+      simpleModeEnabled,
+      showThinking,
+      showToolUse,
+    } = useAppStore.getState();
     if (!bridge) return;
     dirty = false;
     Promise.all([
       bridge.setLocalStorage(API_KEY_STORAGE_KEY, apiKey),
       bridge.setLocalStorage(SERVER_HOST_STORAGE_KEY, serverHost),
       bridge.setLocalStorage(SERVER_TOKEN_STORAGE_KEY, serverToken),
+      bridge.setLocalStorage(
+        SIMPLE_MODE_STORAGE_KEY,
+        String(simpleModeEnabled),
+      ),
+      bridge.setLocalStorage(SHOW_THINKING_STORAGE_KEY, String(showThinking)),
+      bridge.setLocalStorage(SHOW_TOOL_USE_STORAGE_KEY, String(showToolUse)),
     ]).catch((error) => {
       useAppStore
         .getState()
@@ -116,7 +155,10 @@ export function setupSettingsPersistence(): () => void {
     if (
       state.apiKey === prev.apiKey &&
       state.serverHost === prev.serverHost &&
-      state.serverToken === prev.serverToken
+      state.serverToken === prev.serverToken &&
+      state.simpleModeEnabled === prev.simpleModeEnabled &&
+      state.showThinking === prev.showThinking &&
+      state.showToolUse === prev.showToolUse
     ) {
       return;
     }

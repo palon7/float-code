@@ -191,26 +191,3 @@ export function reduceMessage(
       return null;
   }
 }
-
-export function reduceLocalUserMessage(
-  state: SessionState,
-  text: string,
-): Partial<SessionState> {
-  const now = Date.now();
-  const id = `user-${now}`;
-  return {
-    lines: trimLines([
-      ...state.lines,
-      {
-        id,
-        entry: {
-          kind: "user_message",
-          id,
-          timestamp: new Date(now).toISOString(),
-          text,
-        },
-      },
-    ]),
-    sessionStatus: "running",
-  };
-}

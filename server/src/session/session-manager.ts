@@ -1,9 +1,11 @@
 import { realpath } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import {
   ClaudeCodeClient,
   getSessionDir,
   loadSession as loadSessionFromDisk,
 } from "@palon7/cc-client";
+import type { ParsedEntry } from "@palon7/cc-client";
 import type { SessionSnapshot } from "@float-code/shared/protocol";
 import type { ConnectionRegistry } from "../ws/connection-registry.js";
 import { EntryBuffer } from "./entry-buffer.js";
@@ -123,12 +125,17 @@ export class SessionManager {
         );
         this.startNew(live, text);
       }
+      this.broadcastUserMessage(
+        this.activeSessionState.getCurrent() ?? live,
+        text,
+      );
       return;
     }
 
     if (live.status === "running" && live.session) {
       try {
         live.session.send(text);
+        this.broadcastUserMessage(live, text);
         log.info(
           { sessionId: live.meta.sessionId },
           "session.send: forwarded to stdin",
@@ -142,6 +149,10 @@ export class SessionManager {
             "session.send: auto-resume (stdin closed)",
           );
           this.startResume(live, live.meta.sessionId, text);
+          this.broadcastUserMessage(
+            this.activeSessionState.getCurrent() ?? live,
+            text,
+          );
           return;
         }
         this.registry.broadcast("session.error", {
@@ -164,12 +175,25 @@ export class SessionManager {
         });
         return;
       }
+      this.broadcastUserMessage(live, text);
       log.debug(
         { queueLength: live.sendQueue.length },
         "session.send: queued (spawning)",
       );
       return;
     }
+  }
+
+  private broadcastUserMessage(live: LiveSession, text: string): void {
+    const sessionId = live.meta.sessionId ?? "";
+    const entry: ParsedEntry = {
+      kind: "user_message",
+      id: `user-${randomUUID()}`,
+      timestamp: new Date().toISOString(),
+      text,
+    };
+    live.entryBuffer.add(entry);
+    this.registry.broadcast("session.entry", { sessionId, entry });
   }
 
   interrupt(): void {

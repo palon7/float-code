@@ -11,7 +11,8 @@ src/
 ├── App.tsx / main.tsx          # React entry point
 ├── app/                        # App startup / runtime creation
 │   ├── app-store.ts            # zustand: holds runtime reference
-│   └── create-app-runtime.ts   # Assembles WsClient, HttpClient, G2Runtime
+│   ├── create-app-runtime.ts   # Assembles WsClient, HttpClient, G2Runtime
+│   └── runtime-actions-context.ts # React context for runtime actions (reconnect etc.)
 ├── auth/                       # Authentication
 │   └── keypair.ts              # Ed25519 keypair generation (localStorage)
 ├── client/                     # Server communication layer
@@ -27,14 +28,16 @@ src/
 │   ├── runtime/
 │   │   ├── g2-runtime.ts       # Event loop / state machine driver
 │   │   ├── g2-state.ts         # G2State interface / RuntimeEvent types
-│   │   └── g2-context.ts       # Aggregates dependencies used by state (DI)
+│   │   ├── g2-context.ts       # Aggregates dependencies used by state (DI)
+│   │   ├── event-utils.ts      # G2 hardware event helpers
+│   │   └── connection-lifecycle.ts # WS/HTTP connection setup and teardown
 │   ├── display-manager.ts      # Abstracts G2 screen rebuild / upgrade
 │   ├── microphone.ts           # G2 microphone control
 │   ├── text-utils.ts           # Text truncation with byte limit
 │   ├── pages/constants.ts      # Screen layout constants
-│   └── states/                 # Each state of the state machine
+│   └── states/                 # Each state of the state machine (each dir has state.ts + view.ts)
 │       ├── connecting/         # Waiting for WS connection / auth
-│       ├── main/               # Main screen (session display)
+│       ├── main/               # Main screen (session display, includes status-icon.ts)
 │       ├── menu/               # Menu screen
 │       ├── workspace-select/   # Workspace selection
 │       ├── session-select/     # Session selection
@@ -51,6 +54,7 @@ src/
 ├── components/                 # React UI (browser side)
 │   ├── ChatTab.tsx             # Chat display / text input
 │   ├── LogTab.tsx              # Debug log
+│   ├── PairingBanner.tsx       # Pairing status banner
 │   ├── SessionBar.tsx          # Session status bar
 │   └── SettingsTab.tsx         # Settings screen
 ├── hooks/
@@ -129,6 +133,7 @@ main ──(tap)──> menu ──> workspace-select / session-select / main
 - **ListContainer index 0 issue:** `listEvent.currentSelectItemIndex` returns `undefined` when the first item (index 0) is selected. Always use `?? 0` to set a default value. Items at index 1, 2, ... behave normally.
 - **Overlapping TextContainers:** Containers declared later draw on top of earlier ones (no z-index control). Container backgrounds are always transparent (no background color property exists), so content from lower containers shows through. The only visual decoration available is the border.
 - **`rebuildPageContainer` return value:** Always returns `false` on physical devices. Note that it also returns `false` when content exceeds the byte limit, but without updating the display.
+- **Empty string updates are ignored:** Sending `""` to `updateText` / `textContainerUpgrade` is silently skipped (no display update occurs). To clear a container, send a single space `" "` instead.
 - **Browser-side UI must follow EvenReality's design system:** Refer to `/docs/er-design-guideline.md` and always design according to the guidelines. Actively use even-toolkit components.
 
 ---

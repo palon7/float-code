@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Card, StatusDot } from "even-toolkit/web";
+import { Card, Loading, StatusDot } from "even-toolkit/web";
 import { useAppStore, type BridgeStatus } from "../app/app-store";
 import {
   formatToolName,
@@ -37,6 +37,28 @@ function ServerDot({ status }: { status: ConnectionStatus }) {
   );
 }
 
+function ThinkingEntry({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="py-1">
+      <button
+        type="button"
+        className="flex cursor-pointer items-center gap-1 text-[12px] text-text-dim"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="text-[10px]">{open ? "▼" : "▶"}</span>
+        <span className="italic">Thinking...</span>
+      </button>
+      {open && (
+        <div className="mt-1 max-w-[85%] whitespace-pre-wrap break-words text-[12px] text-text-dim italic">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatEntry({ line }: { line: LogLine }) {
   const { entry, result } = line;
 
@@ -59,13 +81,7 @@ function ChatEntry({ line }: { line: LogLine }) {
 
     case "thinking":
       if (!entry.text) return null;
-      return (
-        <div className="py-1">
-          <div className="max-w-[85%] whitespace-pre-wrap break-words text-[12px] text-text-dim italic">
-            {entry.text}
-          </div>
-        </div>
-      );
+      return <ThinkingEntry text={entry.text} />;
 
     case "tool_call": {
       const name = formatToolName(entry.toolName);
@@ -202,6 +218,7 @@ export function ChatTab() {
   const wasAtBottom = useRef(true);
 
   const hasActive = useSessionStore((s) => s.hasActive);
+  const showRunningSpinner = sessionStatus === "running";
 
   // spawning 中もサーバーがキューイングするので送信可能
   const canSend =
@@ -233,7 +250,7 @@ export function ChatTab() {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     });
     return () => cancelAnimationFrame(id);
-  }, [lines]);
+  }, [lines, showRunningSpinner]);
 
   return (
     <section
@@ -258,11 +275,16 @@ export function ChatTab() {
           <div className="space-y-1 px-1">
             {lines.length > 0 ? (
               lines.map((line) => <ChatEntry key={line.id} line={line} />)
-            ) : (
+            ) : !showRunningSpinner ? (
               <p className="py-8 text-center text-[13px] text-text-dim">
                 No messages yet
               </p>
-            )}
+            ) : null}
+            {showRunningSpinner ? (
+              <div className="flex justify-start py-1">
+                <Loading className="py-2" />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
