@@ -14,6 +14,10 @@ shared/src/                          # @float-code/shared -- message types are d
   protocol/
     types.ts                         # All message type definitions (AuthChallenge, AuthErrorCode, etc.)
     entry-guard.ts                   # Entry validation
+  crypto/
+    ed25519-setup.ts                 # @noble/ed25519 sha512 configuration
+    pairing-code.ts                  # SHA-256 -> Base32 pairing code derivation
+    sign.ts                          # Ed25519 keypair generation, signing, verification
 
 server/src/
   index.ts                           # Entry point (startup / shutdown / CLI dispatch)
@@ -41,11 +45,14 @@ server/src/
     errors.ts                        # Workspace-related error definitions
   session/
     session-manager.ts               # Active session management
+    active-session-state.ts          # Active session state (status, entries, snapshot)
+    claude-session-event-handler.ts  # Claude Code session event handling
     entry-buffer.ts                  # Ring buffer implementation
     pid-tracker.ts                   # Claude CLI PID tracking / leak prevention
   permission/                        # Planned for Phase 4
   utils/
     fs.ts                            # Atomic writes (writeJsonAtomic, writeSecretJsonAtomic), dataPath
+    lock.ts                          # Promise-chain lock to prevent read-modify-write races
     logger.ts                        # pino-based logger
   ws/
     heartbeat.ts                     # Connection liveness monitoring via wss.clients
