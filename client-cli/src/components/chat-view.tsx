@@ -270,6 +270,7 @@ type ChatViewProps = {
   wsClient: WsClient;
   workspacePath: string;
   onCommand: (command: string) => boolean;
+  onWorkspacePathChange: (path: string) => void;
   clearScreen: () => void;
 };
 
@@ -277,6 +278,7 @@ export function ChatView({
   wsClient,
   workspacePath,
   onCommand,
+  onWorkspacePathChange,
   clearScreen,
 }: ChatViewProps) {
   const { stdout } = useStdout();
@@ -316,6 +318,9 @@ export function ChatView({
         setHasActiveSession(Boolean(msg.activeSession));
         if (msg.activeSession) {
           const snapshot = msg.activeSession;
+          if (snapshot.meta?.workspacePath) {
+            onWorkspacePathChange(snapshot.meta.workspacePath);
+          }
           setLogs(restoreEntries(snapshot).slice(-MAX_LOGS));
           setSessionRunning(
             snapshot.status === "running" || snapshot.status === "spawning",
@@ -334,10 +339,16 @@ export function ChatView({
         clearScreen();
         setHasActiveSession(true);
         setSessionRunning(false);
+        if (msg.meta?.workspacePath) {
+          onWorkspacePathChange(msg.meta.workspacePath);
+        }
         setLogs(restoreEntries(msg).slice(-MAX_LOGS));
       } else if (msg.type === "session.started") {
         setHasActiveSession(true);
         setSessionRunning(true);
+        if (msg.meta?.workspacePath) {
+          onWorkspacePathChange(msg.meta.workspacePath);
+        }
       } else if (msg.type === "session.done") {
         setHasActiveSession(true);
         setSessionRunning(false);
@@ -410,7 +421,13 @@ export function ChatView({
         return next;
       });
     },
-    [setHasActiveSession, setSessionRunning, clearScreen, workspacePath],
+    [
+      setHasActiveSession,
+      setSessionRunning,
+      clearScreen,
+      workspacePath,
+      onWorkspacePathChange,
+    ],
   );
 
   useEffect(() => {

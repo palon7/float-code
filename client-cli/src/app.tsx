@@ -70,6 +70,10 @@ export function App({ wsUrl, httpUrl, token, keypair, clearScreen }: AppProps) {
     setMode("chat");
   }, [wsClient, workspacePath]);
 
+  const handleWorkspacePathChange = useCallback((path: string) => {
+    setWorkspacePath(path);
+  }, []);
+
   const handleBackToChat = useCallback(() => {
     setMode("chat");
   }, []);
@@ -102,6 +106,7 @@ export function App({ wsUrl, httpUrl, token, keypair, clearScreen }: AppProps) {
       wsClient={wsClient}
       workspacePath={workspacePath}
       onCommand={handleCommand}
+      onWorkspacePathChange={handleWorkspacePathChange}
       clearScreen={clearScreen}
     />
   );
