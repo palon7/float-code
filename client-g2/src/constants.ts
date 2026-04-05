@@ -1,6 +1,7 @@
 export const API_KEY_STORAGE_KEY = "soniox_api_key";
 export const SERVER_HOST_STORAGE_KEY = "server_host";
 export const SERVER_TOKEN_STORAGE_KEY = "server_token";
+export const SIMPLE_MODE_STORAGE_KEY = "simple_mode";
 
 /** rebuildPageContainer / textContainerUpgrade 共通のバイト数上限（安全マージン込み） */
 export const MAX_CONTENT_BYTES = 400;

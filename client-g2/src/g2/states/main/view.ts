@@ -5,7 +5,11 @@ import { DISPLAY_WIDTH, DISPLAY_HEIGHT } from "../../pages/constants";
 const STATUS_HEIGHT = 40;
 const LOG_HEIGHT = DISPLAY_HEIGHT - STATUS_HEIGHT;
 
-export function buildMainPage(statusText: string, logText: string): G2PageDef {
+export function buildMainPage(
+  statusText: string,
+  logText: string,
+  simpleMode = false,
+): G2PageDef {
   return {
     textContainers: [
       new TextContainerProperty({
@@ -13,7 +17,7 @@ export function buildMainPage(statusText: string, logText: string): G2PageDef {
         yPosition: 0,
         width: DISPLAY_WIDTH,
         height: STATUS_HEIGHT,
-        borderWidth: 1,
+        borderWidth: simpleMode ? 0 : 1,
         borderColor: 5,
         borderRadius: 8,
         paddingLength: 4,

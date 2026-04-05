@@ -5,6 +5,7 @@ import type { G2Context } from "../../runtime/g2-context";
 import type { G2State } from "../../runtime/g2-state";
 import { useAppStore } from "../../../app/app-store";
 import { useSessionStore } from "../../../client/session-store";
+import { getSimpleModeLogText } from "../../../client/session-format";
 import { getEventType } from "../../runtime/event-utils";
 import { MAX_CONTENT_BYTES, MAX_LOG_ROWS } from "../../../constants";
 import {
@@ -26,7 +27,9 @@ const MAX_HISTORY_BYTES = 1500;
 export function createMainState(): G2State {
   let transitioning = false;
   let historyMode = false;
+  let simpleMode = useAppStore.getState().simpleModeEnabled;
   let unsubSession: (() => void) | null = null;
+  let unsubAppStore: (() => void) | null = null;
   let blinkTimer: ReturnType<typeof setInterval> | null = null;
   let blinkPhase = false;
   let lastStatus = "";
@@ -45,8 +48,14 @@ export function createMainState(): G2State {
     }
   }
 
+  function getLogContent(): string {
+    const session = useSessionStore.getState();
+    if (simpleMode) return getSimpleModeLogText(session.lines);
+    return session.getLogText();
+  }
+
   function updateLog(ctx: G2Context): void {
-    const rawLog = useSessionStore.getState().getLogText();
+    const rawLog = getLogContent();
     if (rawLog === lastRawLog) return;
     lastRawLog = rawLog;
     const log = truncateForDisplay(
@@ -63,9 +72,27 @@ export function createMainState(): G2State {
   function updateDisplay(ctx: G2Context): void {
     updateStatus(ctx);
     if (historyMode) return;
-    // BLE 送信中は計算をスキップ。ドレイン完了時に onDrainIdle で再計算される
-    if (ctx.display.hasPendingUpdate("log")) return;
+    // シンプルモードは内容が短いので常に最新を反映する。
+    // 通常モードは BLE 負荷を抑えるため送信中はスキップし、onDrainIdle で再計算。
+    if (!simpleMode && ctx.display.hasPendingUpdate("log")) return;
     updateLog(ctx);
+  }
+
+  async function rebuildPage(ctx: G2Context): Promise<void> {
+    lastStatus = "";
+    lastRawLog = "";
+    lastLog = "";
+    await ctx.display.setPage(
+      buildMainPage(
+        formatStatusText(useSessionStore.getState().getStatusInfo(), false),
+        truncateForDisplay(
+          stripAnsiEscapes(getLogContent()),
+          MAX_CONTENT_BYTES,
+          MAX_LOG_ROWS,
+        ),
+        simpleMode,
+      ),
+    );
   }
 
   function enterHistory(ctx: G2Context): void {
@@ -146,19 +173,15 @@ export function createMainState(): G2State {
     id: "main",
 
     async enter(ctx: G2Context) {
-      const session = useSessionStore.getState();
-      await ctx.display.setPage(
-        buildMainPage(
-          formatStatusText(session.getStatusInfo(), false),
-          truncateForDisplay(
-            stripAnsiEscapes(session.getLogText()),
-            MAX_CONTENT_BYTES,
-            MAX_LOG_ROWS,
-          ),
-        ),
-      );
+      simpleMode = useAppStore.getState().simpleModeEnabled;
+      await rebuildPage(ctx);
 
       unsubSession = useSessionStore.subscribe(() => updateDisplay(ctx));
+      unsubAppStore = useAppStore.subscribe((state, prev) => {
+        if (state.simpleModeEnabled === prev.simpleModeEnabled) return;
+        simpleMode = state.simpleModeEnabled;
+        rebuildPage(ctx);
+      });
       ctx.display.onDrainIdle = () => {
         if (!historyMode) updateLog(ctx);
       };
@@ -184,6 +207,8 @@ export function createMainState(): G2State {
       }
       unsubSession?.();
       unsubSession = null;
+      unsubAppStore?.();
+      unsubAppStore = null;
       ctx.display.onDrainIdle = null;
     },
   };

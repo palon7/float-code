@@ -133,6 +133,7 @@ main ──(tap)──> menu ──> workspace-select / session-select / main
 - **ListContainer index 0 issue:** `listEvent.currentSelectItemIndex` returns `undefined` when the first item (index 0) is selected. Always use `?? 0` to set a default value. Items at index 1, 2, ... behave normally.
 - **Overlapping TextContainers:** Containers declared later draw on top of earlier ones (no z-index control). Container backgrounds are always transparent (no background color property exists), so content from lower containers shows through. The only visual decoration available is the border.
 - **`rebuildPageContainer` return value:** Always returns `false` on physical devices. Note that it also returns `false` when content exceeds the byte limit, but without updating the display.
+- **Empty string updates are ignored:** Sending `""` to `updateText` / `textContainerUpgrade` is silently skipped (no display update occurs). To clear a container, send a single space `" "` instead.
 - **Browser-side UI must follow EvenReality's design system:** Refer to `/docs/er-design-guideline.md` and always design according to the guidelines. Actively use even-toolkit components.
 
 ---

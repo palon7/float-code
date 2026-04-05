@@ -143,3 +143,14 @@ export function getStatusText(
 export function getLogText(lines: readonly LogLine[]): string {
   return lines.map((l) => entryToText(l.entry, l.result)).join("\n");
 }
+
+export function getSimpleModeLogText(lines: readonly LogLine[]): string {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const entry = lines[i].entry;
+    if (entry.kind === "user_message") return " ";
+    if (entry.kind !== "text") continue;
+    const text = entry.text.trim();
+    if (text) return text;
+  }
+  return "";
+}
