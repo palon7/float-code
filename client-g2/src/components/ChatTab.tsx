@@ -37,6 +37,28 @@ function ServerDot({ status }: { status: ConnectionStatus }) {
   );
 }
 
+function ThinkingEntry({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="py-1">
+      <button
+        type="button"
+        className="flex cursor-pointer items-center gap-1 text-[12px] text-text-dim"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="text-[10px]">{open ? "▼" : "▶"}</span>
+        <span className="italic">Thinking...</span>
+      </button>
+      {open && (
+        <div className="mt-1 max-w-[85%] whitespace-pre-wrap break-words text-[12px] text-text-dim italic">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatEntry({ line }: { line: LogLine }) {
   const { entry, result } = line;
 
@@ -59,13 +81,7 @@ function ChatEntry({ line }: { line: LogLine }) {
 
     case "thinking":
       if (!entry.text) return null;
-      return (
-        <div className="py-1">
-          <div className="max-w-[85%] whitespace-pre-wrap break-words text-[12px] text-text-dim italic">
-            {entry.text}
-          </div>
-        </div>
-      );
+      return <ThinkingEntry text={entry.text} />;
 
     case "tool_call": {
       const name = formatToolName(entry.toolName);

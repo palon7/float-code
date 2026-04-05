@@ -43,7 +43,7 @@ export function entryToText(
     case "system":
       return `● Session started (${entry.model})`;
     case "user_message":
-      return `\n▶ ${text}`;
+      return `▶ ${text}`;
     case "thinking":
       if (!text) return "";
       return `◌ ${text}`;
@@ -94,6 +94,7 @@ export interface StatusInfo {
 export function getStatusInfo(
   sessionStatus: SessionStatus | "none",
   lines: readonly LogLine[],
+  filter?: EntryFilter,
 ): StatusInfo {
   switch (sessionStatus) {
     case "none":
@@ -103,7 +104,8 @@ export function getStatusInfo(
     case "spawning":
       return { icon: "spawning", text: "Starting..." };
     case "running": {
-      const last = lines[lines.length - 1];
+      const visible = filter ? getVisibleLines(lines, filter) : lines;
+      const last = visible[visible.length - 1];
       if (last) {
         const e = last.entry;
         if (e.kind === "thinking")
@@ -135,13 +137,44 @@ const STATUS_ICONS: Record<StatusIcon, string> = {
 export function getStatusText(
   sessionStatus: SessionStatus | "none",
   lines: readonly LogLine[],
+  filter?: EntryFilter,
 ): string {
-  const info = getStatusInfo(sessionStatus, lines);
+  const info = getStatusInfo(sessionStatus, lines, filter);
   return `${STATUS_ICONS[info.icon]} ${info.text}`;
 }
 
-export function getLogText(lines: readonly LogLine[]): string {
-  return lines.map((l) => entryToText(l.entry, l.result)).join("\n");
+export interface EntryFilter {
+  showThinking: boolean;
+  showToolUse: boolean;
+}
+
+export function getVisibleLines(
+  lines: readonly LogLine[],
+  filter: EntryFilter,
+): readonly LogLine[] {
+  if (filter.showThinking && filter.showToolUse) return lines;
+  return lines.filter((l) => {
+    if (!filter.showThinking && l.entry.kind === "thinking") return false;
+    if (!filter.showToolUse && l.entry.kind === "tool_call") return false;
+    return true;
+  });
+}
+
+export function getLogText(
+  lines: readonly LogLine[],
+  filter?: EntryFilter,
+): string {
+  const target = filter ? getVisibleLines(lines, filter) : lines;
+  const parts: string[] = [];
+  let prevKind: string | null = null;
+  for (const l of target) {
+    const text = entryToText(l.entry, l.result);
+    if (!text) continue;
+    if (prevKind && l.entry.kind !== prevKind) parts.push("");
+    parts.push(text);
+    prevKind = l.entry.kind;
+  }
+  return parts.join("\n");
 }
 
 export function getSimpleModeLogText(lines: readonly LogLine[]): string {

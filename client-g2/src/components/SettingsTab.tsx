@@ -6,6 +6,8 @@ export function SettingsTab() {
   const serverToken = useAppStore((state) => state.serverToken);
   const apiKey = useAppStore((state) => state.apiKey);
   const simpleModeEnabled = useAppStore((state) => state.simpleModeEnabled);
+  const showThinking = useAppStore((state) => state.showThinking);
+  const showToolUse = useAppStore((state) => state.showToolUse);
 
   const setSetting = useAppStore((state) => state.setSetting);
 
@@ -89,6 +91,33 @@ export function SettingsTab() {
           <p className="text-subtitle text-text-dim">
             Simple: status + latest AI response only
           </p>
+        </SettingsGroup>
+
+        <SettingsGroup label="Display filter">
+          {(
+            [
+              {
+                field: "showThinking" as const,
+                label: "Show thinking",
+                checked: showThinking,
+              },
+              {
+                field: "showToolUse" as const,
+                label: "Show tool use",
+                checked: showToolUse,
+              },
+            ] as const
+          ).map(({ field, label, checked }) => (
+            <label key={field} className="flex items-center gap-3 py-2">
+              <input
+                checked={checked}
+                className="h-4 w-4 accent-accent"
+                type="checkbox"
+                onChange={() => setSetting(field, !checked)}
+              />
+              <span className="text-subtitle">{label}</span>
+            </label>
+          ))}
         </SettingsGroup>
       </Card>
     </section>

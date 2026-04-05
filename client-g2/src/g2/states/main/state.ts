@@ -5,7 +5,10 @@ import type { G2Context } from "../../runtime/g2-context";
 import type { G2State } from "../../runtime/g2-state";
 import { useAppStore } from "../../../app/app-store";
 import { useSessionStore } from "../../../client/session-store";
-import { getSimpleModeLogText } from "../../../client/session-format";
+import {
+  getSimpleModeLogText,
+  type EntryFilter,
+} from "../../../client/session-format";
 import { getEventType } from "../../runtime/event-utils";
 import { MAX_CONTENT_BYTES, MAX_LOG_ROWS } from "../../../constants";
 import {
@@ -28,6 +31,10 @@ export function createMainState(): G2State {
   let transitioning = false;
   let historyMode = false;
   let simpleMode = useAppStore.getState().simpleModeEnabled;
+  let entryFilter: EntryFilter = {
+    showThinking: useAppStore.getState().showThinking,
+    showToolUse: useAppStore.getState().showToolUse,
+  };
   let unsubSession: (() => void) | null = null;
   let unsubAppStore: (() => void) | null = null;
   let blinkTimer: ReturnType<typeof setInterval> | null = null;
@@ -39,7 +46,7 @@ export function createMainState(): G2State {
   function updateStatus(ctx: G2Context): void {
     if (historyMode) return;
     const status = formatStatusText(
-      useSessionStore.getState().getStatusInfo(),
+      useSessionStore.getState().getStatusInfo(entryFilter),
       blinkPhase,
     );
     if (status !== lastStatus) {
@@ -51,7 +58,7 @@ export function createMainState(): G2State {
   function getLogContent(): string {
     const session = useSessionStore.getState();
     if (simpleMode) return getSimpleModeLogText(session.lines);
-    return session.getLogText();
+    return session.getLogText(entryFilter);
   }
 
   function updateLog(ctx: G2Context): void {
@@ -84,7 +91,10 @@ export function createMainState(): G2State {
     lastLog = "";
     await ctx.display.setPage(
       buildMainPage(
-        formatStatusText(useSessionStore.getState().getStatusInfo(), false),
+        formatStatusText(
+          useSessionStore.getState().getStatusInfo(entryFilter),
+          false,
+        ),
         truncateForDisplay(
           stripAnsiEscapes(getLogContent()),
           MAX_CONTENT_BYTES,
@@ -98,7 +108,9 @@ export function createMainState(): G2State {
   function enterHistory(ctx: G2Context): void {
     if (historyMode) return;
     historyMode = true;
-    const rawLog = stripAnsiEscapes(useSessionStore.getState().getLogText());
+    const rawLog = stripAnsiEscapes(
+      useSessionStore.getState().getLogText(entryFilter),
+    );
     const text = truncateForDisplay(rawLog, MAX_HISTORY_BYTES, Infinity);
     ctx.display.onDebugLog?.(
       `enterHistory: ${byteLength(rawLog)}B -> ${byteLength(text)}B (${text.length} chars)`,
@@ -173,14 +185,36 @@ export function createMainState(): G2State {
     id: "main",
 
     async enter(ctx: G2Context) {
-      simpleMode = useAppStore.getState().simpleModeEnabled;
+      const appState = useAppStore.getState();
+      simpleMode = appState.simpleModeEnabled;
+      entryFilter = {
+        showThinking: appState.showThinking,
+        showToolUse: appState.showToolUse,
+      };
       await rebuildPage(ctx);
 
       unsubSession = useSessionStore.subscribe(() => updateDisplay(ctx));
       unsubAppStore = useAppStore.subscribe((state, prev) => {
-        if (state.simpleModeEnabled === prev.simpleModeEnabled) return;
+        const modeChanged = state.simpleModeEnabled !== prev.simpleModeEnabled;
+        const filterChanged =
+          state.showThinking !== prev.showThinking ||
+          state.showToolUse !== prev.showToolUse;
+        if (!modeChanged && !filterChanged) return;
         simpleMode = state.simpleModeEnabled;
-        rebuildPage(ctx);
+        entryFilter = {
+          showThinking: state.showThinking,
+          showToolUse: state.showToolUse,
+        };
+        if (historyMode) {
+          // history mode中はページ再構築せずhistory表示を再計算
+          const rawLog = stripAnsiEscapes(
+            useSessionStore.getState().getLogText(entryFilter),
+          );
+          const text = truncateForDisplay(rawLog, MAX_HISTORY_BYTES, Infinity);
+          ctx.display.updateText("log", text);
+        } else {
+          rebuildPage(ctx);
+        }
       });
       ctx.display.onDrainIdle = () => {
         if (!historyMode) updateLog(ctx);
