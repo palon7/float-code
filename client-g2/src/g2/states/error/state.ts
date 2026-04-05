@@ -1,21 +1,16 @@
-import { OsEventTypeList } from "@evenrealities/even_hub_sdk";
 import type { EvenHubEvent } from "@evenrealities/even_hub_sdk";
 import type { G2Context } from "../../runtime/g2-context";
 import type { G2State } from "../../runtime/g2-state";
-import { getEventType } from "../../runtime/event-utils";
+import { isTapGestureEvent } from "../../runtime/event-utils";
 import { buildErrorPage } from "./view";
 
 export function createErrorState(message: string): G2State {
   let transitioning = false;
 
   function handleG2(ctx: G2Context, event: EvenHubEvent): void {
-    const eventType = getEventType(event);
-    // sysEvent もタップとして扱う（テキストのみの画面では sysEvent が来ることがある）
-    if (
-      eventType === OsEventTypeList.CLICK_EVENT ||
-      eventType === OsEventTypeList.DOUBLE_CLICK_EVENT ||
-      event.sysEvent
-    ) {
+    // テキストのみの画面では sysEvent が来ることがあるが、
+    // 前後景イベントなどは拾わずタップ系だけを再接続トリガーにする。
+    if (isTapGestureEvent(event)) {
       transitioning = true;
       ctx.requestConnect();
     }
