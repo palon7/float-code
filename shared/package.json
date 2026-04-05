@@ -23,6 +23,10 @@
     "./crypto/pairing-code": {
       "types": "./src/crypto/pairing-code.ts",
       "default": "./dist/crypto/pairing-code.js"
+    },
+    "./crypto/uuid": {
+      "types": "./src/crypto/uuid.ts",
+      "default": "./dist/crypto/uuid.js"
     }
   },
   "scripts": {

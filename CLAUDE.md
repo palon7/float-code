@@ -33,6 +33,7 @@ Monorepo using pnpm workspaces.
 - Check existing code before reimplementing similar functionality
 - If you find yourself writing the same code repeatedly, consider extracting it into a function or custom hook
 - Write _why_ in comments, not _what_. If the code is complex enough to warrant a "what" comment, consider simplifying through refactoring or design improvements
+  - Exception: For complex logic like the bit manipulation, a concise "what" comment is acceptable
 - Keep comments concise and undecorated: `// Comment here`
 - Follow existing implementations to maintain consistency
 - Always run `pnpm run -r check` after finishing an implementation
