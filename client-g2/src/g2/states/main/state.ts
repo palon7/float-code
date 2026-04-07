@@ -9,7 +9,11 @@ import {
   getSimpleModeLogText,
   type EntryFilter,
 } from "../../../client/session-format";
-import { getEventType } from "../../runtime/event-utils";
+import {
+  getEventType,
+  isClickEvent,
+  isDoubleClickEvent,
+} from "../../runtime/event-utils";
 import { MAX_CONTENT_BYTES, MAX_LOG_ROWS } from "../../../constants";
 import {
   stripAnsiEscapes,
@@ -157,7 +161,7 @@ export function createMainState(): G2State {
       return;
     }
 
-    if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+    if (isDoubleClickEvent(event)) {
       if (historyMode) {
         exitHistory(ctx);
         return;
@@ -168,16 +172,10 @@ export function createMainState(): G2State {
       return;
     }
 
-    if (eventType === OsEventTypeList.CLICK_EVENT) {
+    if (isClickEvent(event)) {
       transitioning = true;
       ctx.transition(createMenuState());
       return;
-    }
-
-    // テキストのみの画面では sysEvent がタップとして来る
-    if (event.sysEvent) {
-      transitioning = true;
-      ctx.transition(createMenuState());
     }
   }
 

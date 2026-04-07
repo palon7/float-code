@@ -23,6 +23,18 @@
     "./crypto/pairing-code": {
       "types": "./src/crypto/pairing-code.ts",
       "default": "./dist/crypto/pairing-code.js"
+    },
+    "./crypto/uuid": {
+      "types": "./src/crypto/uuid.ts",
+      "default": "./dist/crypto/uuid.js"
+    },
+    "./crypto/request-sign": {
+      "types": "./src/crypto/request-sign.ts",
+      "default": "./dist/crypto/request-sign.js"
+    },
+    "./crypto/signed-fetch": {
+      "types": "./src/crypto/signed-fetch.ts",
+      "default": "./dist/crypto/signed-fetch.js"
     }
   },
   "scripts": {
@@ -32,6 +44,8 @@
     "lint:fix": "eslint src --fix",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check": "pnpm run build && pnpm run lint && pnpm run format:check"
   },
   "dependencies": {
@@ -45,6 +59,7 @@
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.57.2"
+    "typescript-eslint": "^8.57.2",
+    "vitest": "^3.2.4"
   }
 }

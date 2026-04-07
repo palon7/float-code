@@ -5,7 +5,7 @@
 ### Authentication
 
 - Two-factor: shared `authToken` + Ed25519 public key challenge-response
-- REST API: `Authorization: Bearer <authToken>` header (unchanged)
+- REST API: Per-request Ed25519 signature (no bearer credential transmitted). See [protocol.md](protocol.md) for details
 - WebSocket: `auth { publicKey, authToken }` -> `auth.challenge` -> `auth.response { signature }` -> `auth.ok`
 - New devices go through a pairing flow: `pairing` -> `pairing.pending { code }` -> user approves via CLI
 - See [pairing.md](pairing.md) for full details
@@ -20,6 +20,7 @@
 
 - Pre-auth messages are validated by type guards before processing (publicKey format, signature format)
 - authToken verified with `crypto.timingSafeEqual`
+- REST requests authenticated via per-request Ed25519 signature with timestamp (±30s) and nonce replay prevention (60s retention)
 - Unauthenticated connections time out after 10 seconds
 - All secret files (`config.json`, `approved-keys.json`, `pending-pairings.json`) written with `0600` permissions
 - `origin`/`host` checks can be enabled via configuration

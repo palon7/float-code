@@ -1,9 +1,8 @@
-import { OsEventTypeList } from "@evenrealities/even_hub_sdk";
 import type { EvenHubEvent } from "@evenrealities/even_hub_sdk";
 import type { ServerMessage } from "@float-code/shared/protocol";
 import type { G2Context } from "../../runtime/g2-context";
 import type { G2State } from "../../runtime/g2-state";
-import { getEventType } from "../../runtime/event-utils";
+import { isDoubleClickEvent } from "../../runtime/event-utils";
 import { buildMenuPage } from "./view";
 import { createMainState } from "../main/state";
 import { createErrorState } from "../error/state";
@@ -43,7 +42,7 @@ export function createMenuState(): G2State {
 
   function handleG2(ctx: G2Context, event: EvenHubEvent): void {
     // ダブルクリック → main に戻る
-    if (getEventType(event) === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+    if (isDoubleClickEvent(event)) {
       transitioning = true;
       ctx.transition(createMainState());
       return;

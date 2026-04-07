@@ -1,9 +1,8 @@
-import { OsEventTypeList } from "@evenrealities/even_hub_sdk";
 import type { EvenHubEvent } from "@evenrealities/even_hub_sdk";
 import type { G2Context } from "../../runtime/g2-context";
 import type { G2State } from "../../runtime/g2-state";
 import type { VoiceInputEvent } from "../../../voice-input/service-types";
-import { getEventType } from "../../runtime/event-utils";
+import { isDoubleClickEvent } from "../../runtime/event-utils";
 import { MAX_CONTENT_BYTES } from "../../../constants";
 import { truncateToBytes } from "../../text-utils";
 import { createMainState } from "../main/state";
@@ -71,7 +70,7 @@ export function createVoiceListeningState(): G2State {
   }
 
   function handleG2(ctx: G2Context, event: EvenHubEvent): void {
-    if (getEventType(event) === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+    if (isDoubleClickEvent(event)) {
       transitioning = true;
       ctx
         .stopVoiceSession("manual_confirm")

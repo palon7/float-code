@@ -278,6 +278,187 @@ describe("WsGateway", () => {
     });
   });
 
+  describe("認証エラー分岐", () => {
+    it("authToken 不正で AUTH_TOKEN_INVALID + close(4403)", async () => {
+      const ws = createMockWs();
+      gateway.handleOpen(ws);
+
+      gateway.handleMessage(
+        ws,
+        JSON.stringify({
+          type: "auth",
+          publicKey: TEST_PUBLIC_KEY,
+          authToken: "wrong-token-00000000000000000000000000000000",
+          timestamp: "",
+        }),
+      );
+
+      await vi.waitFor(() => {
+        expect(sent(ws)).toContainEqual(
+          expect.objectContaining({
+            type: "auth.error",
+            code: "AUTH_TOKEN_INVALID",
+          }),
+        );
+      });
+      expect(ws.close).toHaveBeenCalledWith(4403, "auth_failed");
+    });
+
+    it("未承認鍵で pairing 登録 + KEY_NOT_APPROVED + close(4409)", async () => {
+      const { isApproved } = await import("../auth/approved-keys.js");
+      vi.mocked(isApproved).mockResolvedValueOnce(false);
+
+      const ws = createMockWs();
+      gateway.handleOpen(ws);
+      gateway.handleMessage(ws, authMsg());
+
+      await vi.waitFor(() => {
+        expect(sent(ws)).toContainEqual(
+          expect.objectContaining({
+            type: "auth.error",
+            code: "KEY_NOT_APPROVED",
+          }),
+        );
+      });
+      expect(ws.close).toHaveBeenCalledWith(4409, "key_not_approved");
+
+      const { requestPairing } = await import("../auth/pairing.js");
+      expect(requestPairing).toHaveBeenCalledWith(TEST_PUBLIC_KEY);
+    });
+
+    it("署名不正で SIGNATURE_INVALID + close(4403)", async () => {
+      const { verifySignature } = await import("../auth/challenge.js");
+      vi.mocked(verifySignature).mockResolvedValueOnce(false);
+
+      const ws = createMockWs();
+      gateway.handleOpen(ws);
+      gateway.handleMessage(ws, authMsg());
+
+      await vi.waitFor(() => {
+        expect(
+          sent(ws).some(
+            (m) => (m as { type: string }).type === "auth.challenge",
+          ),
+        ).toBe(true);
+      });
+
+      gateway.handleMessage(ws, authResponseMsg());
+
+      await vi.waitFor(() => {
+        expect(sent(ws)).toContainEqual(
+          expect.objectContaining({
+            type: "auth.error",
+            code: "SIGNATURE_INVALID",
+          }),
+        );
+      });
+      expect(ws.close).toHaveBeenCalledWith(4403, "auth_failed");
+    });
+
+    it("challenge 発行後に鍵が revoke されると KEY_NOT_APPROVED + close(4409)", async () => {
+      const { isApproved } = await import("../auth/approved-keys.js");
+      // 1回目: approved (challenge発行), 2回目: revoked (response検証時)
+      vi.mocked(isApproved)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false);
+
+      const ws = createMockWs();
+      gateway.handleOpen(ws);
+      gateway.handleMessage(ws, authMsg());
+
+      await vi.waitFor(() => {
+        expect(
+          sent(ws).some(
+            (m) => (m as { type: string }).type === "auth.challenge",
+          ),
+        ).toBe(true);
+      });
+
+      gateway.handleMessage(ws, authResponseMsg());
+
+      await vi.waitFor(() => {
+        expect(sent(ws)).toContainEqual(
+          expect.objectContaining({
+            type: "auth.error",
+            code: "KEY_NOT_APPROVED",
+          }),
+        );
+      });
+      expect(ws.close).toHaveBeenCalledWith(4409, "key_not_approved");
+      expect(registry.getAll().size).toBe(0);
+    });
+  });
+
+  describe("不正入力", () => {
+    it("不正 JSON はクラッシュせず無視する", () => {
+      const ws = createMockWs();
+      gateway.handleOpen(ws);
+
+      gateway.handleMessage(ws, "not-valid-json{{{");
+
+      expect(sent(ws)).toHaveLength(0);
+      expect(ws.close).not.toHaveBeenCalled();
+    });
+
+    it("challenge 未発行で auth.response を送っても認証されない", async () => {
+      const ws = createMockWs();
+      gateway.handleOpen(ws);
+
+      gateway.handleMessage(ws, authResponseMsg());
+
+      // auth.response は handleResponse で phase 不一致 → false
+      // gateway は authenticated=false で return するだけ
+      await new Promise((r) => setTimeout(r, 50));
+      expect(registry.getAll().size).toBe(0);
+      expect(ws.close).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("認証済みフェーズの再認証", () => {
+    it("認証済みで auth を再送しても無視される", async () => {
+      const ws = await authenticateWs(gateway);
+
+      gateway.handleMessage(ws, authMsg());
+
+      await new Promise((r) => setTimeout(r, 50));
+      // send はクリア済みなので auth.challenge が送られていないことを確認
+      expect(sent(ws)).not.toContainEqual(
+        expect.objectContaining({ type: "auth.challenge" }),
+      );
+      expect(ws.close).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("awaiting_response タイムアウト", () => {
+    it("challenge 発行後にタイムアウトすると AUTH_TIMEOUT + close(4401)", async () => {
+      vi.useFakeTimers();
+      const ws = createMockWs();
+      gateway.handleOpen(ws);
+
+      gateway.handleMessage(ws, authMsg());
+
+      await vi.waitFor(() => {
+        expect(
+          sent(ws).some(
+            (m) => (m as { type: string }).type === "auth.challenge",
+          ),
+        ).toBe(true);
+      });
+
+      vi.advanceTimersByTime(10_000);
+
+      expect(sent(ws)).toContainEqual(
+        expect.objectContaining({
+          type: "auth.error",
+          code: "AUTH_TIMEOUT",
+        }),
+      );
+      expect(ws.close).toHaveBeenCalledWith(4401, "auth_timeout");
+
+      vi.useRealTimers();
+    });
+  });
+
   describe("切断処理", () => {
     it("切断後のメッセージはルーティングされない", async () => {
       const ws = await authenticateWs(gateway);

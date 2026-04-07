@@ -5,6 +5,7 @@ import { cleanupExpired } from "./auth/pairing.js";
 import { createApp } from "./app.js";
 import { createLocalServer } from "./local-server.js";
 import { startHeartbeat } from "./ws/heartbeat.js";
+import { startNonceCleanup, stopNonceCleanup } from "./auth/nonce-store.js";
 import { runCli } from "./cli/index.js";
 import { logger } from "./utils/logger.js";
 
@@ -31,7 +32,7 @@ async function main() {
   if (config.networkMode === "lan") {
     logger.warn(
       "WARNING: Running in LAN mode. Transport is unencrypted — " +
-        "authToken and session content are visible to network observers. " +
+        "session content is visible to network observers. " +
         "Use 'tailscale' or 'local' mode for untrusted networks.",
     );
   }
@@ -51,6 +52,7 @@ async function main() {
   );
 
   injectWebSocket(server);
+  startNonceCleanup();
   const heartbeatTimer = startHeartbeat(wss);
 
   const localApp = createLocalServer();
@@ -70,6 +72,7 @@ async function main() {
 
   const shutdown = async () => {
     logger.info("Shutting down...");
+    stopNonceCleanup();
     clearInterval(heartbeatTimer);
     gateway.stop();
     await sessionManager.shutdown();

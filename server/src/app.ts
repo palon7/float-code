@@ -4,12 +4,13 @@ import type { WebSocketServer } from "ws";
 import { WsGateway } from "./ws/gateway.js";
 import { ConnectionRegistry } from "./ws/connection-registry.js";
 import type { HealthResponse } from "@float-code/shared/protocol";
-import { bearerAuth } from "./api/auth-middleware.js";
+import { signatureAuth } from "./api/auth-middleware.js";
 import workspacesRouter from "./api/workspaces.js";
 import { createSessionsRouter } from "./api/sessions.js";
 import { SessionManager } from "./session/session-manager.js";
 import { PidTracker } from "./session/pid-tracker.js";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { logger } from "hono/logger";
 
 export type AppContext = {
@@ -33,7 +34,16 @@ export function createApp(startTime: number): AppContext {
   app.use(logger());
   app.use(
     "*",
-    cors({ origin: "*", allowHeaders: ["Authorization", "Content-Type"] }),
+    cors({
+      origin: "*",
+      allowHeaders: [
+        "Content-Type",
+        "X-Public-Key",
+        "X-Timestamp",
+        "X-Nonce",
+        "X-Signature",
+      ],
+    }),
   );
 
   // Health check (認証不要)
@@ -48,7 +58,8 @@ export function createApp(startTime: number): AppContext {
 
   // REST API (認証必須)
   const api = new Hono();
-  api.use("*", bearerAuth);
+  api.use("*", bodyLimit({ maxSize: 64 * 1024 }));
+  api.use("*", signatureAuth);
   api.route("/workspaces", workspacesRouter);
   api.route("/sessions", createSessionsRouter(sessionManager));
   app.route("/api", api);

@@ -5,6 +5,7 @@ import { buildConnectingPage } from "../g2/states/connecting/view";
 import { createVoiceInputService } from "../voice-input/voice-input-service";
 import { WsClient } from "../client/ws";
 import { HttpClient } from "../client/http";
+import { createSignedFetch } from "@float-code/shared/crypto/signed-fetch";
 import { loadOrCreateKeypair, type Keypair } from "../auth/keypair";
 
 export interface AppRuntimeHandle {
@@ -30,8 +31,12 @@ export async function createAppRuntime(
 ): Promise<AppRuntimeHandle> {
   const keypair = await getKeypair();
 
+  const signedFetch = createSignedFetch(globalThis.fetch.bind(globalThis), {
+    privateKey: keypair.privateKey,
+    publicKey: keypair.publicKey,
+  });
   const wsClient = new WsClient("", "", keypair);
-  const httpClient = new HttpClient("", "");
+  const httpClient = new HttpClient("", signedFetch);
 
   return {
     httpClient,
