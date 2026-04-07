@@ -3,18 +3,18 @@ import type {
   WorkspaceInfo,
   WorkspacesBrowseResponse,
 } from "@float-code/shared/protocol";
+import type { FetchFn } from "@float-code/shared/crypto/signed-fetch";
 
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 
 export class HttpClient {
   constructor(
     private baseUrl: string,
-    private token: string,
+    private fetchFn: FetchFn,
   ) {}
 
-  updateConfig(baseUrl: string, token: string): void {
+  updateConfig(baseUrl: string): void {
     this.baseUrl = baseUrl;
-    this.token = token;
   }
 
   async getRecentWorkspaces(signal?: AbortSignal): Promise<WorkspaceInfo[]> {
@@ -69,10 +69,7 @@ export class HttpClient {
 
     let res: Response;
     try {
-      res = await globalThis.fetch(`${this.baseUrl}${path}`, {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-        },
+      res = await this.fetchFn(`${this.baseUrl}${path}`, {
         signal: controller.signal,
       });
     } catch (error) {

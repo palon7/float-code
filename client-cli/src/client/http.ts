@@ -2,11 +2,12 @@ import type {
   SessionListItem,
   WorkspaceInfo,
 } from "@float-code/shared/protocol";
+import type { FetchFn } from "@float-code/shared/crypto/signed-fetch";
 
 export class HttpClient {
   constructor(
     private baseUrl: string,
-    private token: string,
+    private fetchFn: FetchFn,
   ) {}
 
   async getRecentWorkspaces(): Promise<WorkspaceInfo[]> {
@@ -24,10 +25,6 @@ export class HttpClient {
   }
 
   private async fetch(path: string): Promise<Response> {
-    return globalThis.fetch(`${this.baseUrl}${path}`, {
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-      },
-    });
+    return this.fetchFn(`${this.baseUrl}${path}`);
   }
 }

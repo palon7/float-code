@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import { useApp } from "ink";
 import { WsClient } from "./client/ws.js";
 import { HttpClient } from "./client/http.js";
+import { createSignedFetch } from "@float-code/shared/crypto/signed-fetch";
 import type { Keypair } from "./auth/keypair.js";
 
 import { ChatView } from "./components/chat-view.js";
@@ -24,7 +25,16 @@ export function App({ wsUrl, httpUrl, token, keypair, clearScreen }: AppProps) {
   const [workspacePath, setWorkspacePath] = useState(process.cwd());
 
   const [wsClient] = useState(() => new WsClient(wsUrl, token, keypair));
-  const [httpClient] = useState(() => new HttpClient(httpUrl, token));
+  const [httpClient] = useState(
+    () =>
+      new HttpClient(
+        httpUrl,
+        createSignedFetch(globalThis.fetch, {
+          privateKey: keypair.privateKey,
+          publicKey: keypair.publicKey,
+        }),
+      ),
+  );
 
   useEffect(() => {
     if (!token) return;

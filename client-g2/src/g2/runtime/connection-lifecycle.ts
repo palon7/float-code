@@ -49,7 +49,7 @@ export class ConnectionLifecycle {
 
     const urls = deriveUrls(serverHost);
     this.host.wsClient.updateConfig(urls.wsUrl, serverToken);
-    this.host.httpClient.updateConfig(urls.httpUrl, serverToken);
+    this.host.httpClient.updateConfig(urls.httpUrl);
 
     this.clearConnectTimeout();
     this.connectTimeoutTimer = setTimeout(() => {
