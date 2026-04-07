@@ -18,7 +18,7 @@ Ed25519 public key authentication with a device pairing system. Combined with op
 ### Security notes
 
 - In `lan` mode, transport is unencrypted (`ws://`). Challenge-response proves the client holds the private key, but session content and `authToken` are visible to network observers. Use `tailscale` mode for untrusted networks
-- `authToken` is sent in every WebSocket `auth` message and every REST API request. The public key layer adds device identity, not transport confidentiality
+- `authToken` is sent in WebSocket `auth` messages. REST API uses per-request Ed25519 signatures (no bearer credential transmitted). The public key layer adds device identity, not transport confidentiality
 
 ## Key generation
 
@@ -250,7 +250,11 @@ All files containing secrets or keys use `writeSecretJsonAtomic` with `0600` per
 | `server/src/auth/challenge.ts`    | Challenge generation and signature verification |
 | `server/src/auth/pairing.ts`      | Pairing flow logic, pending storage             |
 | `shared/src/crypto/pairing-code.ts` | SHA-256 -> Base32 pairing code derivation (used by server and clients) |
+| `shared/src/crypto/request-sign.ts` | REST request signing and verification |
+| `shared/src/crypto/signed-fetch.ts` | fetch wrapper with auto-signing |
+| `shared/src/crypto/uuid.ts` | UUID v4 generation via `@noble/hashes` |
 | `server/src/auth/approved-keys.ts`| Approved key store (CRUD)                        |
+| `server/src/auth/nonce-store.ts` | REST nonce replay prevention (in-memory, 60s retention) |
 | `server/src/local-server.ts`      | Localhost management Hono instance              |
 | `server/src/cli/index.ts`         | CLI subcommand entry point                      |
 | `server/src/cli/pairing.ts`       | Pairing subcommand implementation               |

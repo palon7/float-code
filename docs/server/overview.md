@@ -7,7 +7,7 @@
 - The new server is implemented under `server/` and communicates with the G2 frontend via WebSocket
 - Uses `@palon7/cc-client` to control Claude CLI
 - Server is intended for LAN/remote access
-- Authentication uses Ed25519 public key challenge-response + shared authToken
+- Authentication: WebSocket uses Ed25519 public key challenge-response + shared authToken. REST API uses per-request Ed25519 signature (no bearer credential)
 - Device pairing via human-verifiable pairing codes, managed through a localhost management server and CLI
 - Supports three network modes: `local` (loopback), `tailscale` (WireGuard), `lan` (plaintext)
 - Supports multiple simultaneous client connections (CLI + G2, etc.)
@@ -70,6 +70,7 @@
     |         +---- challenge (Ed25519 challenge/verify)
     |         +---- approved-keys (approved key store)
     |         +---- pairing (pending pairing management)
+    |         +---- nonce-store (REST replay prevention)
     |
     +---- [Workspace Store]
     |         +---- recent workspaces (JSON)
@@ -98,6 +99,13 @@ shared/                        # @float-code/shared — shared between packages
     protocol/
       types.ts                 # All message type definitions
       entry-guard.ts           # Entry validation
+    crypto/
+      ed25519-setup.ts         # @noble/ed25519 sha512 configuration
+      sign.ts                  # Ed25519 keypair generation, signing, verification
+      pairing-code.ts          # SHA-256 -> Base32 pairing code derivation
+      request-sign.ts          # REST request signing and verification
+      signed-fetch.ts          # fetch wrapper with auto-signing
+      uuid.ts                  # UUID v4 generation via @noble/hashes
 
 server/
   package.json
@@ -113,6 +121,7 @@ server/
       approved-keys.ts         # Approved key store (CRUD)
       pairing.ts               # Pairing flow logic, pending storage
       pairing-code.ts          # SHA-256 -> Base32 pairing code derivation
+      nonce-store.ts           # REST nonce replay prevention (in-memory, 60s retention)
     cli/
       index.ts                 # CLI subcommand dispatcher
       pairing.ts               # `pairing list/approve/revoke` commands

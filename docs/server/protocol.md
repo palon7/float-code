@@ -4,9 +4,74 @@
 
 Request/response operations are provided as a REST API. Implemented as Hono HTTP routes.
 
-### Authentication
+### Authentication (per-request Ed25519 signature)
 
-All endpoints validate the `Authorization: Bearer <token>` header (Hono middleware).
+All REST endpoints (under `/api/*`) require a per-request Ed25519 signature. The client signs each request with its device private key, and the server verifies it against the approved public key list (`approved-keys.json`). No bearer credential is transmitted.
+
+#### HTTP headers
+
+```http
+X-Public-Key: <hex-encoded 32-byte public key>
+X-Timestamp: <unix milliseconds>
+X-Nonce: <UUID v4>
+X-Signature: <hex-encoded Ed25519 signature>
+```
+
+#### Signature payload (canonical string)
+
+```
+float-code-rest-v1\n${method}\n${requestTarget}\n${timestamp}\n${nonce}\n${bodyHash}
+```
+
+- `float-code-rest-v1`: Signing context. Separated from WebSocket challenge-response (`float-code-auth-v1`) to prevent cross-protocol attacks
+- `method`: HTTP method (uppercase). e.g. `GET`
+- `requestTarget`: Normalized path + query (`new URL(url, "http://localhost")` → `pathname + search`)
+- `timestamp`: Unix milliseconds string. e.g. `1712300000000`
+- `nonce`: UUID v4. e.g. `550e8400-e29b-41d4-a716-446655440000`
+- `bodyHash`: SHA-256 hex of the request body. For bodyless requests (GET, HEAD, DELETE, OPTIONS), the SHA-256 of empty input (`e3b0c44...`) is used
+
+#### Server verification order
+
+1. Header presence + format validation (publicKey: 64 hex, signature: 128 hex, nonce: UUID v4, timestamp: safe integer)
+2. Timestamp range check (±30s from server time)
+3. Nonce claim (atomic check + register via `claimNonce()`)
+4. Public key approval check (`isApproved()` against `approved-keys.json`)
+5. Request target normalization + body hash computation
+6. Ed25519 signature verification
+
+Checks are ordered by cost (cheapest first). Nonce is consumed before the public key check, but the timestamp check filters expired requests first, so nonce exhaustion attacks are impractical.
+
+#### Nonce replay prevention
+
+- Client generates a nonce per request using `generateUUID()` (`shared/src/crypto/uuid.ts`, backed by `@noble/hashes/utils.randomBytes`)
+- Server retains used nonces in memory for 60s (2× the ±30s timestamp tolerance), then discards them
+- `claimNonce()` is synchronous, so check-then-set is atomic under Node.js single-threaded event loop
+- On server restart, the nonce store is cleared. Replay of pre-restart requests requires a valid timestamp (±30s), so restarts longer than 30s are naturally protected. For faster restarts, only read-only GET requests are affected
+
+#### CORS
+
+Browser clients (client-g2) trigger preflight requests due to custom headers. The server allows the signature headers:
+
+```ts
+cors({
+  origin: "*",
+  allowHeaders: ["Content-Type", "X-Public-Key", "X-Timestamp", "X-Nonce", "X-Signature"],
+})
+```
+
+#### Client integration
+
+Both clients use `createSignedFetch()` (`shared/src/crypto/signed-fetch.ts`) which wraps a `fetch` function to automatically attach signature headers. `HttpClient` receives the wrapped fetch via constructor injection and has no knowledge of the signing details.
+
+#### Source files
+
+| File | Description |
+| --- | --- |
+| `shared/src/crypto/request-sign.ts` | `normalizeRequestTarget`, `hashBody`, `buildSignPayload`, `signRequest`, `verifyRequestSignature` |
+| `shared/src/crypto/signed-fetch.ts` | `createSignedFetch` — fetch wrapper that auto-signs requests |
+| `shared/src/crypto/uuid.ts` | `generateUUID` — UUID v4 via `@noble/hashes/utils.randomBytes` |
+| `server/src/api/auth-middleware.ts` | `signatureAuth` — Hono middleware implementing the verification flow |
+| `server/src/auth/nonce-store.ts` | `claimNonce`, `startNonceCleanup` — in-memory nonce replay prevention |
 
 ### Workspace
 
@@ -52,7 +117,10 @@ HTTP status codes and error code mapping:
 | Status | Code                        | Description                                           |
 | ------ | --------------------------- | ----------------------------------------------------- |
 | 400    | `INVALID_REQUEST`           | Invalid request body, missing required parameters     |
-| 401    | `UNAUTHORIZED`              | Token not set or invalid                              |
+| 401    | `SIGNATURE_INVALID`         | Missing, malformed, or invalid request signature      |
+| 401    | `KEY_NOT_APPROVED`          | Public key is not in the approved list                |
+| 401    | `TIMESTAMP_OUT_OF_RANGE`    | Request timestamp outside ±30s tolerance              |
+| 401    | `NONCE_REUSED`              | Request nonce has already been used                   |
 | 404    | `WORKSPACE_NOT_FOUND`       | Specified path does not exist                         |
 | 404    | `SESSION_NOT_FOUND`         | Specified session ID does not exist                   |
 | 409    | `SESSION_ABORT_TIMEOUT`     | Session abort timed out                               |
